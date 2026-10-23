@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: quickcart-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-quickcart_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quickcart_secret_password}
+      POSTGRES_DB: ${POSTGRES_DB:-quickcart_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - quickcart_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quickcart_user} -d ${POSTGRES_DB:-quickcart_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - quickcart-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: quickcart-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - quickcart_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - quickcart-net
+
+volumes:
+  quickcart_pgdata:
+    name: quickcart_pgdata
+  quickcart_redisdata:
+    name: quickcart_redisdata
+
+networks:
+  quickcart-net:
+    name: quickcart-net
+    driver: bridge
