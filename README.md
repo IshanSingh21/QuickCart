@@ -38,8 +38,11 @@ A production-grade, backend-focused e-commerce RESTful API built as an SDE portf
 ```
 quickcart/
 ├── .env.example              # Blueprint for all environment configuration variables
+├── .env                      # Local development environment configuration (gitignored)
+├── .env.test                 # Isolated test environment configuration
 ├── .gitignore                # Production git ignore definitions
 ├── docker-compose.yml        # PostgreSQL 16 and Redis 7 multi-container orchestration
+├── jest.config.js            # Jest testing configuration and coverage setup
 ├── package.json              # Project manifest and task automation scripts
 ├── README.md                 # Project overview, architecture, and getting started
 ├── docs/                     # Comprehensive architectural documentation suite
@@ -48,48 +51,99 @@ quickcart/
 │   ├── api-specs.md          # REST API contracts, JSON envelope, and error formats
 │   ├── security.md           # Threat modeling (STRIDE) and OWASP top 10 defenses
 │   ├── testing-strategy.md   # Test pyramid, concurrency testing, and QA architecture
-│   └── roadmap.md            # Detailed phase-by-phase implementation plan
-└── src/                      # Application source code (to be built in subsequent phases)
+│   ├── roadmap.md            # Detailed phase-by-phase implementation plan
+│   └── setup-and-migrations.md # Safe database setup and migration workflow
+├── prisma/
+│   ├── schema.prisma         # Authoritative Prisma schema with 11 relational models
+│   └── migrations/
+│       └── 20261026000000_init/ # Initial migration SQL script
+│           └── migration.sql
+├── src/
+│   ├── app.js                # Express app setup, security headers, middleware pipeline
+│   ├── server.js             # HTTP server listener and graceful shutdown handlers
+│   ├── config/
+│   │   ├── env.js            # Centralized environment configuration and fail-fast validation
+│   │   └── logger.js         # Structured JSON / formatted console logger
+│   ├── constants/
+│   │   └── http-status.js    # HTTP status codes and domain error codes enum
+│   ├── lib/
+│   │   └── prisma.js         # PrismaClient singleton with event logging
+│   ├── middlewares/
+│   │   ├── error-handler.js  # Centralized global error handler (Prisma, Zod, AppError)
+│   │   ├── not-found.js      # 404 handler for unmatched routes
+│   │   ├── request-logger.js # Morgan HTTP request logging with response latency
+│   │   └── validate.js       # Reusable Zod schema request validation middleware
+│   ├── modules/
+│   │   └── health/           # Healthcheck module
+│   │       ├── health.controller.js
+│   │       ├── health.routes.js
+│   │       └── health.service.js
+│   ├── routes/
+│   │   └── api.routes.js     # Top-level API router mounting module sub-routers
+│   └── utils/
+│       ├── api-response.js   # Standard success/error JSON response envelope formatters
+│       └── app-error.js      # Operational domain error class with static helpers
+└── tests/
+    ├── integration/
+    │   └── health.test.js    # Supertest integration tests for /api/v1/health, 404, malformed JSON
+    └── unit/
+        ├── api-response.test.js       # Unit tests for response envelopes
+        ├── app-error.test.js          # Unit tests for AppError factory
+        ├── error-handler.test.js      # Unit tests for centralized error middleware
+        ├── logger.test.js             # Unit tests for logger utility
+        └── validation-middleware.test.js # Unit tests for Zod request validation
 ```
 
 ---
 
-## 🚀 Phase 0 Quickstart & Verification
+## 🚀 Quickstart & Verification
 
 ### 1. Prerequisites
 - **Node.js**: v20 or higher
-- **Docker & Docker Compose**: v20+
+- **Docker & Docker Compose**: v20+ (or local PostgreSQL 16)
 
-### 2. Setup Environment
-Copy the example environment configuration:
+### 2. Environment Setup
 ```bash
 cp .env.example .env
 ```
 
 ### 3. Start PostgreSQL and Redis Infrastructure
-Launch the database and cache containers in the background:
 ```bash
 docker compose up -d
-```
-Verify the health status of both services:
-```bash
 docker compose ps
 ```
 
-### 4. Verify Phase 0 Initialization
-Run the project initialization verification script:
+### 4. Run Database Migrations
 ```bash
-npm run verify:setup
+npx prisma migrate dev --name init
+```
+
+### 5. Run Automated Tests
+```bash
+# Run all unit and integration tests
+npm test
+
+# Run tests with coverage reporting
+npm run test:coverage
+```
+
+### 6. Start the API Server
+```bash
+# Development mode with hot-reloading
+npm run dev
+
+# Production mode
+npm start
 ```
 
 ---
 
-## 📚 Architectural Documentation
+## 📚 Documentation Index
 
-Dive deeper into the engineering designs:
 - [System Architecture & Concurrency Strategy](file:///docs/architecture.md)
 - [Data Entities, ERD & Schema Design](file:///docs/schema.md)
 - [REST API Specifications & Envelope Standards](file:///docs/api-specs.md)
 - [Security Architecture & Threat Mitigation](file:///docs/security.md)
-- [Testing Strategy & Race Condition Verification](file:///docs/testing-strategy.md)
+- [Testing Strategy & Quality Assurance](file:///docs/testing-strategy.md)
+- [Setup & Migration Workflow](file:///docs/setup-and-migrations.md)
 - [Phase-by-Phase Roadmap](file:///docs/roadmap.md)

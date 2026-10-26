@@ -28,8 +28,12 @@ coverage/
 
 # Redis & Database Dumps
 dump.rdb
-*.sql
+*.dump.sql
+backup*.sql
 *.sqlite
+
+# Keep Prisma migrations
+!prisma/migrations/**/*.sql
 
 # Docker Volumes & Logs
 data/
