@@ -69,11 +69,18 @@ quickcart/
 │   ├── lib/
 │   │   └── prisma.js         # PrismaClient singleton with event logging
 │   ├── middlewares/
+│   │   ├── auth.js           # JWT authentication and Role-Based Access Control (RBAC)
 │   │   ├── error-handler.js  # Centralized global error handler (Prisma, Zod, AppError)
 │   │   ├── not-found.js      # 404 handler for unmatched routes
+│   │   ├── rate-limiter.js   # Tiered rate limiters (strict auth & general API)
 │   │   ├── request-logger.js # Morgan HTTP request logging with response latency
 │   │   └── validate.js       # Reusable Zod schema request validation middleware
 │   ├── modules/
+│   │   ├── auth/             # Authentication & user identity domain
+│   │   │   ├── auth.controller.js
+│   │   │   ├── auth.routes.js
+│   │   │   ├── auth.service.js
+│   │   │   └── auth.validation.js
 │   │   └── health/           # Healthcheck module
 │   │       ├── health.controller.js
 │   │       ├── health.routes.js
@@ -82,15 +89,23 @@ quickcart/
 │   │   └── api.routes.js     # Top-level API router mounting module sub-routers
 │   └── utils/
 │       ├── api-response.js   # Standard success/error JSON response envelope formatters
-│       └── app-error.js      # Operational domain error class with static helpers
+│       ├── app-error.js      # Operational domain error class with static helpers
+│       ├── password.js       # Bcrypt salted hashing and secure comparison
+│       └── token.js          # Cryptographic JWT access & refresh token rotation utilities
 └── tests/
     ├── integration/
+    │   ├── auth.test.js      # Supertest integration tests for register, login, me, refresh, logout, RBAC
     │   └── health.test.js    # Supertest integration tests for /api/v1/health, 404, malformed JSON
     └── unit/
         ├── api-response.test.js       # Unit tests for response envelopes
         ├── app-error.test.js          # Unit tests for AppError factory
+        ├── auth-middleware.test.js    # Unit tests for JWT verification & role authorization
+        ├── auth-service.test.js       # Unit tests for authentication logic & token reuse protocol
         ├── error-handler.test.js      # Unit tests for centralized error middleware
         ├── logger.test.js             # Unit tests for logger utility
+        ├── password.test.js           # Unit tests for bcrypt hashing & comparison
+        ├── rate-limiter.test.js       # Unit tests for rate limiting error handler
+        ├── token.test.js              # Unit tests for JWT signing & SHA-256 token hashing
         └── validation-middleware.test.js # Unit tests for Zod request validation
 ```
 

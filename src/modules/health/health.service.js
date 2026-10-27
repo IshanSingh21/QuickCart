@@ -11,11 +11,14 @@ class HealthService {
     let dbStatus = { status: 'disconnected', latencyMs: null };
     let isOverallHealthy = true;
 
-    // Database Connectivity Probe
+    // Database Connectivity Probe with 1000ms timeout
+    let timer;
     try {
       const dbStartTime = Date.now();
-      // Fast lightweight query to test connection
-      await prisma.$queryRaw`SELECT 1`;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Database probe timeout')), 1000);
+      });
+      await Promise.race([prisma.$queryRaw`SELECT 1`, timeout]);
       const dbLatency = Date.now() - dbStartTime;
       dbStatus = {
         status: 'connected',
@@ -28,6 +31,8 @@ class HealthService {
       };
       // For health check reporting, don't crash the server
       isOverallHealthy = false;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
 
     const uptimeSeconds = Math.floor(process.uptime());

@@ -6,6 +6,7 @@ const config = require('./config/env');
 const requestLogger = require('./middlewares/request-logger');
 const notFoundHandler = require('./middlewares/not-found');
 const errorHandler = require('./middlewares/error-handler');
+const { generalLimiter } = require('./middlewares/rate-limiter');
 const apiRoutes = require('./routes/api.routes');
 const healthController = require('./modules/health/health.controller');
 const ApiResponse = require('./utils/api-response');
@@ -44,7 +45,7 @@ app.get('/', (req, res) => {
 app.get('/health', healthController.checkHealth.bind(healthController));
 
 // Versioned API Routes (/api/v1/*)
-app.use(config.apiPrefix, apiRoutes);
+app.use(config.apiPrefix, generalLimiter, apiRoutes);
 
 // Catch 404 for unhandled routes
 app.use(notFoundHandler);
