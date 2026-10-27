@@ -28,20 +28,20 @@ class AppError extends Error {
     return new AppError(message, HttpStatus.BAD_REQUEST, code, details);
   }
 
-  static unauthorized(message = 'Authentication required', details = null) {
-    return new AppError(message, HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED, details);
+  static unauthorized(message = 'Authentication required', code = ErrorCodes.UNAUTHORIZED, details = null) {
+    return new AppError(message, HttpStatus.UNAUTHORIZED, code, details);
   }
 
-  static forbidden(message = 'Access denied', details = null) {
-    return new AppError(message, HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN, details);
+  static forbidden(message = 'Access denied', code = ErrorCodes.FORBIDDEN, details = null) {
+    return new AppError(message, HttpStatus.FORBIDDEN, code, details);
   }
 
-  static notFound(message = 'Resource not found', details = null) {
-    return new AppError(message, HttpStatus.NOT_FOUND, ErrorCodes.NOT_FOUND, details);
+  static notFound(message = 'Resource not found', code = ErrorCodes.NOT_FOUND, details = null) {
+    return new AppError(message, HttpStatus.NOT_FOUND, code, details);
   }
 
-  static conflict(message, details = null) {
-    return new AppError(message, HttpStatus.CONFLICT, ErrorCodes.CONFLICT, details);
+  static conflict(message, code = ErrorCodes.CONFLICT, details = null) {
+    return new AppError(message, HttpStatus.CONFLICT, code, details);
   }
 
   static internal(message = 'Internal server error', details = null) {
