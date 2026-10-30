@@ -56,7 +56,9 @@ quickcart/
 ├── prisma/
 │   ├── schema.prisma         # Authoritative Prisma schema with 11 relational models
 │   └── migrations/
-│       └── 20261026000000_init/ # Initial migration SQL script
+│       ├── 20261026000000_init/ # Initial migration SQL script
+│       │   └── migration.sql
+│       └── 20261030000000_catalog_indexes/ # Category hierarchy and product catalog indexes
 │           └── migration.sql
 ├── src/
 │   ├── app.js                # Express app setup, security headers, middleware pipeline
@@ -81,30 +83,46 @@ quickcart/
 │   │   │   ├── auth.routes.js
 │   │   │   ├── auth.service.js
 │   │   │   └── auth.validation.js
-│   │   └── health/           # Healthcheck module
-│   │       ├── health.controller.js
-│   │       ├── health.routes.js
-│   │       └── health.service.js
+│   │   ├── categories/       # Hierarchical category management domain
+│   │   │   ├── categories.controller.js
+│   │   │   ├── categories.routes.js
+│   │   │   ├── categories.service.js
+│   │   │   └── categories.validation.js
+│   │   ├── health/           # Healthcheck module
+│   │   │   ├── health.controller.js
+│   │   │   ├── health.routes.js
+│   │   │   └── health.service.js
+│   │   └── products/         # Product catalog, filtering, search & pagination domain
+│   │       ├── products.controller.js
+│   │       ├── products.routes.js
+│   │       ├── products.service.js
+│   │       └── products.validation.js
 │   ├── routes/
 │   │   └── api.routes.js     # Top-level API router mounting module sub-routers
 │   └── utils/
 │       ├── api-response.js   # Standard success/error JSON response envelope formatters
 │       ├── app-error.js      # Operational domain error class with static helpers
 │       ├── password.js       # Bcrypt salted hashing and secure comparison
+│       ├── slugify.js        # URL-safe slug generation utility
 │       └── token.js          # Cryptographic JWT access & refresh token rotation utilities
 └── tests/
     ├── integration/
     │   ├── auth.test.js      # Supertest integration tests for register, login, me, refresh, logout, RBAC
-    │   └── health.test.js    # Supertest integration tests for /api/v1/health, 404, malformed JSON
+    │   ├── categories.test.js# Supertest integration tests for category hierarchy, CRUD, and admin RBAC
+    │   ├── health.test.js    # Supertest integration tests for /api/v1/health, 404, malformed JSON
+    │   └── products.test.js  # Supertest integration tests for catalog, search, pagination, price bounds
     └── unit/
         ├── api-response.test.js       # Unit tests for response envelopes
         ├── app-error.test.js          # Unit tests for AppError factory
         ├── auth-middleware.test.js    # Unit tests for JWT verification & role authorization
         ├── auth-service.test.js       # Unit tests for authentication logic & token reuse protocol
+        ├── categories-service.test.js # Unit tests for category tree and CRUD logic
         ├── error-handler.test.js      # Unit tests for centralized error middleware
         ├── logger.test.js             # Unit tests for logger utility
         ├── password.test.js           # Unit tests for bcrypt hashing & comparison
+        ├── products-service.test.js   # Unit tests for product filtering, active state rules, and stock logic
         ├── rate-limiter.test.js       # Unit tests for rate limiting error handler
+        ├── slugify.test.js            # Unit tests for slugify string transformation
         ├── token.test.js              # Unit tests for JWT signing & SHA-256 token hashing
         └── validation-middleware.test.js # Unit tests for Zod request validation
 ```
