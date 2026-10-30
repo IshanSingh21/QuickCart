@@ -54,6 +54,11 @@ const config = {
     saltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || (process.env.NODE_ENV === 'test' ? 4 : 12)
   },
 
+  pagination: {
+    defaultPageSize: parseInt(process.env.DEFAULT_PAGE_SIZE, 10) || 10,
+    maxPageSize: parseInt(process.env.MAX_PAGE_SIZE, 10) || 50
+  },
+
   logging: {
     level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'silent' : 'info')
   }

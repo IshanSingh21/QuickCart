@@ -87,6 +87,7 @@ model Category {
   products Product[]
 
   @@index([slug])
+  @@index([parentId])
   @@map("categories")
 }
 
@@ -111,6 +112,8 @@ model Product {
   inventory   Inventory[]
 
   @@index([categoryId, price])
+  @@index([categoryId, isActive])
+  @@index([isActive, createdAt])
   @@index([slug])
   @@index([sku])
   @@map("products")
