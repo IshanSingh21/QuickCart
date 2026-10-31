@@ -193,7 +193,40 @@ QuickCart adopts a **Cache-Aside (Lazy Loading)** model backed by Redis:
 
 ---
 
-## 7. SDE Portfolio & Interview Talking Points
+## 7. Shopping Cart Architecture & Price Authority
+
+The shopping cart module acts as the critical bridge between product discovery and the checkout state machine. It is designed around the **Zero-Trust Client Principle** and strict **IDOR (Insecure Direct Object Reference) Isolation**.
+
+### Live Dynamic Pricing vs. Historical Price Snapshot
+A fundamental architectural decision in QuickCart is that **carts always reflect live catalog prices**, rather than snapshotting prices at the moment an item is added:
+
+| Aspect | Historical Price Snapshot in Cart | Live Current Catalog Price (QuickCart Design) |
+| :--- | :--- | :--- |
+| **Database Schema** | `cart_items` stores a `price` column | `cart_items` stores only `productId` and `quantity` |
+| **Catalog Price Changes** | Stale prices linger in carts, leading to merchant loss or cart invalidation overhead | Cart immediately reflects up-to-date pricing without background sync workers |
+| **Legal/Business Meaning** | Items in a cart are **not a contract**; they express non-binding purchasing intent | Price snapshotting is reserved exclusively for `order_items` during checkout |
+| **Checkout Revalidation** | Must reconcile cart snapshot price against live catalog | Checkout revalidates live price, stock, and active status in an ACID transaction |
+
+### Zero-Trust Price Authority
+The client payload for adding or updating cart items is strictly limited:
+```json
+// Allowed payload:
+{
+  "productId": "41684c8d-71b3-46ea-9a86-7787fbda75a6",
+  "quantity": 2
+}
+```
+If a malicious client supplies `price: 0.01` or `discount: 0.90` or `userId: "other-user"`, the API silently discards those attributes via Zod schema stripping. Line totals (`currentPrice * quantity`) and cart subtotals are computed dynamically from authoritative PostgreSQL records using `Prisma.Decimal` arbitrary-precision arithmetic to eliminate IEEE-754 floating-point drift.
+
+### IDOR Defense & Ownership Isolation
+Shopping carts and their line items are bound to the authenticated user ID (`req.user.id`).
+- When mutating or removing a cart item (`PATCH /cart/items/:itemId` or `DELETE /cart/items/:itemId`), the service verifies:
+  `item.cart.userId === authenticatedUserId`
+- If a user attempts to mutate or delete another customer's line item, the system intentionally returns **`404 Not Found`** rather than `403 Forbidden` to prevent resource ID enumeration.
+
+---
+
+## 8. SDE Portfolio & Interview Talking Points
 
 When presenting QuickCart in engineering interviews, emphasize these concrete system design decisions:
 
@@ -203,8 +236,10 @@ When presenting QuickCart in engineering interviews, emphasize these concrete sy
 2. **Why a Modular Monolith over Microservices?**
    - For early-to-mid scale e-commerce, a well-structured modular monolith provides superior operational simplicity: zero network serialization overhead between modules, atomic database transactions without complex two-phase commits (2PC) or Sagas, unified deployment, and instant local reproduction.
    - Boundaries are cleanly enforced via modular folder structures, enabling straightforward extraction into microservices if domain scaling demands it.
-3. **Why Server-Side Price Calculation?**
+3. **Why Live Prices in Carts vs. Snapshots?**
+   - Items in a cart do not represent a legal purchase agreement; storing prices on `cart_items` creates stale data risks and synchronization overhead when merchants update product prices. By computing prices dynamically using authoritative database records and freezing prices only upon order creation in `order_items.unitPrice`, the system maintains financial integrity while keeping the cart lightweight and accurate.
+4. **Why Server-Side Price Calculation?**
    - Never trust frontend payloads. If a user tampers with the HTTP payload and sends `price: 0.01`, the system ignores it. Prices are strictly determined by querying authoritative product records within the transaction snapshot.
-4. **Asynchronous Stock Release via BullMQ vs. Cron Job:**
+5. **Asynchronous Stock Release via BullMQ vs. Cron Job:**
    - Traditional polling cron jobs (`SELECT * FROM orders WHERE status = 'PENDING' AND createdAt < ...`) perform table scans and induce high database load.
    - BullMQ utilizes Redis sorted sets (`ZADD` with timestamps) to schedule exact delayed jobs (`{ delay: 15 * 60 * 1000 }`), waking up only when a specific order reservation expires to release its stock atomically.

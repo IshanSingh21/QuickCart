@@ -30,6 +30,8 @@ A production-grade, backend-focused e-commerce RESTful API built as an SDE portf
    - Redis caches catalog queries and category trees with TTLs. Admin mutations trigger surgical cache invalidation, ensuring sub-5ms read latency while maintaining data freshness.
 5. **Asynchronous Order TTL & Inventory Recovery:**
    - Uses **BullMQ** with Redis delayed jobs to automatically expire unpaid orders after 15 minutes, safely restoring reserved inventory to the warehouse stock without periodic full-table database scans.
+6. **Strict Ownership Isolation & Live Cart Valuation:**
+   - Carts dynamically calculate line totals and subtotals from authoritative live catalog prices using `Prisma.Decimal` arbitrary-precision arithmetic. Cart line items enforce strict ownership validation against the authenticated JWT session, returning 404 on mismatched user IDs to neutralize IDOR enumeration attacks.
 
 ---
 
@@ -83,6 +85,11 @@ quickcart/
 │   │   │   ├── auth.routes.js
 │   │   │   ├── auth.service.js
 │   │   │   └── auth.validation.js
+│   │   ├── cart/             # Shopping cart & server-side price authority domain
+│   │   │   ├── cart.controller.js
+│   │   │   ├── cart.routes.js
+│   │   │   ├── cart.service.js
+│   │   │   └── cart.validation.js
 │   │   ├── categories/       # Hierarchical category management domain
 │   │   │   ├── categories.controller.js
 │   │   │   ├── categories.routes.js
@@ -108,6 +115,7 @@ quickcart/
 └── tests/
     ├── integration/
     │   ├── auth.test.js      # Supertest integration tests for register, login, me, refresh, logout, RBAC
+    │   ├── cart.test.js      # Supertest integration tests for cart lifecycle, price authority, IDOR defense
     │   ├── categories.test.js# Supertest integration tests for category hierarchy, CRUD, and admin RBAC
     │   ├── health.test.js    # Supertest integration tests for /api/v1/health, 404, malformed JSON
     │   └── products.test.js  # Supertest integration tests for catalog, search, pagination, price bounds
@@ -116,6 +124,7 @@ quickcart/
         ├── app-error.test.js          # Unit tests for AppError factory
         ├── auth-middleware.test.js    # Unit tests for JWT verification & role authorization
         ├── auth-service.test.js       # Unit tests for authentication logic & token reuse protocol
+        ├── cart-service.test.js       # Unit tests for live decimal pricing, stock limits, and IDOR isolation
         ├── categories-service.test.js # Unit tests for category tree and CRUD logic
         ├── error-handler.test.js      # Unit tests for centralized error middleware
         ├── logger.test.js             # Unit tests for logger utility
