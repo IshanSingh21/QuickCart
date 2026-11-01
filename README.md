@@ -32,6 +32,8 @@ A production-grade, backend-focused e-commerce RESTful API built as an SDE portf
    - Uses **BullMQ** with Redis delayed jobs to automatically expire unpaid orders after 15 minutes, safely restoring reserved inventory to the warehouse stock without periodic full-table database scans.
 6. **Strict Ownership Isolation & Live Cart Valuation:**
    - Carts dynamically calculate line totals and subtotals from authoritative live catalog prices using `Prisma.Decimal` arbitrary-precision arithmetic. Cart line items enforce strict ownership validation against the authenticated JWT session, returning 404 on mismatched user IDs to neutralize IDOR enumeration attacks.
+7. **Decoupled Two-Phase Payment Settlement & PCI-DSS Safety:**
+   - External payment gateway calls are strictly decoupled from database transactions to prevent connection starvation and dual-write split-brain state. Payment attempts enforce unique idempotency keys, safe replay cache, and deterministic state transitions (`INITIATED` -> `SUCCEEDED` / `FAILED`). Zero cardholder data is collected, fully complying with PCI-DSS.
 
 ---
 
@@ -104,6 +106,12 @@ quickcart/
 │   │   │   ├── orders.routes.js
 │   │   │   ├── orders.service.js
 │   │   │   └── orders.validation.js
+│   │   ├── payments/         # Simulated payment provider & decoupled settlement
+│   │   │   ├── payments.controller.js
+│   │   │   ├── payments.routes.js
+│   │   │   ├── payments.service.js
+│   │   │   ├── payments.validation.js
+│   │   │   └── simulated-payment-provider.js
 │   │   └── products/         # Product catalog, filtering, search & pagination domain
 │   │       ├── products.controller.js
 │   │       ├── products.routes.js
@@ -124,6 +132,7 @@ quickcart/
     │   ├── categories.test.js# Supertest integration tests for category hierarchy, CRUD, and admin RBAC
     │   ├── health.test.js    # Supertest integration tests for /api/v1/health, 404, malformed JSON
     │   ├── orders.test.js    # Supertest integration tests for checkout, rollback, idempotency, race conditions
+    │   ├── payments.test.js  # Supertest integration tests for simulated payment, idempotency replay, declines
     │   └── products.test.js  # Supertest integration tests for catalog, search, pagination, price bounds
     └── unit/
         ├── api-response.test.js       # Unit tests for response envelopes
@@ -136,8 +145,10 @@ quickcart/
         ├── logger.test.js             # Unit tests for logger utility
         ├── orders-service.test.js     # Unit tests for checkout ACID transactions, stock reservation, restock
         ├── password.test.js           # Unit tests for bcrypt hashing & comparison
+        ├── payments-service.test.js   # Unit tests for 3-phase decoupled payments, idempotency, state transitions
         ├── products-service.test.js   # Unit tests for product filtering, active state rules, and stock logic
         ├── rate-limiter.test.js       # Unit tests for rate limiting error handler
+        ├── simulated-payment-provider.test.js # Unit tests for PCI-DSS simulated gateway provider
         ├── slugify.test.js            # Unit tests for slugify string transformation
         ├── token.test.js              # Unit tests for JWT signing & SHA-256 token hashing
         └── validation-middleware.test.js # Unit tests for Zod request validation

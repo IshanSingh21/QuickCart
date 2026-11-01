@@ -155,49 +155,98 @@ RETURNING "id", "name", "sku", "price", "stock", "isActive";
 
 ---
 
-## 5. Idempotency & Order State Machine
+## 5. Payments Architecture & Order State Machine
 
-### The Double-Submit Vulnerability
-Network timeouts or impatient users can trigger duplicate checkout or payment requests. Without idempotency protection, this results in duplicate orders and double debits.
+### 5.1 The Anti-Pattern: External Network Calls Inside Database Transactions
+A common novice mistake in e-commerce backend engineering is attempting to wrap an external payment provider call inside a local ACID database transaction:
+```javascript
+// ANTIPATTERN: Never do this!
+await prisma.$transaction(async (tx) => {
+  const order = await tx.order.findUnique({ ... });
+  const charge = await paymentGateway.charge(...); // <-- BLOCKS DB CONNECTION DURING EXTERNAL I/O!
+  await tx.order.update({ ... });
+});
+```
 
-### Idempotency Flow via `Idempotency-Key`
-Every order creation and payment request requires an `Idempotency-Key` header (UUIDv4):
+**Why this breaks in distributed systems:**
+1. **Connection Pool Starvation:** Third-party gateway calls require 500ms to 3000ms (and up to 30s during timeouts). Holding an active PostgreSQL client connection open during network I/O rapidly exhausts the pool, causing widespread system degradation.
+2. **Row Lock Holding:** Exclusive row locks on orders and inventory remain held across network boundaries, destroying transactional concurrency.
+3. **The Dual-Write Problem & Split-Brain:** If the external gateway charges the card successfully, but the network drops before PostgreSQL commits the local transaction, the transaction rolls back:
+   - The customer's bank card was charged.
+   - The database marks the order as unpaid.
+   - A catastrophic split-brain state occurs between payment processor and internal database.
+
+### 5.2 QuickCart's 3-Phase Decoupled Payment Architecture
+QuickCart decouples the payment lifecycle into three strictly separated phases:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    Client->>App: POST /api/v1/orders/checkout [Idempotency-Key: abc-123]
-    App->>Redis: SET quickcart:idempotency:abc-123 "PROCESSING" NX EX 120
-    alt Key already exists with response cached
-        App-->>Client: Return Cached Response (HTTP 200/201)
-    else Key already exists in PROCESSING state
-        App-->>Client: Return HTTP 409 Conflict ("Request in progress")
-    else Key acquired successfully
-        App->>Postgres: Execute Checkout (Interactive ACID Transaction)
-        App->>Redis: SET quickcart:idempotency:abc-123 <serialized_response> EX 86400
-        App-->>Client: Return HTTP 201 Created (Order Details)
+    actor Customer
+    participant App as Express Backend
+    participant DB as PostgreSQL 16
+    participant Gateway as Simulated Payment Provider
+
+    Note over Customer,DB: Phase 1: Local Preparation (DB Transaction 1)
+    Customer->>App: POST /api/v1/payments/orders/:id/pay [Idempotency-Key]
+    App->>DB: Check Idempotency Key & Verify Order status = PENDING_PAYMENT
+    App->>DB: INSERT INTO payments (status = 'INITIATED', idempotencyKey, paymentIntentId)
+    Note over App,DB: DB Transaction 1 COMMITS (Connections freed immediately)
+
+    Note over App,Gateway: Phase 2: External Gateway Call (Outside DB Transaction)
+    App->>Gateway: processPayment(amount, paymentIntentId, idempotencyKey)
+    Gateway-->>App: Gateway Result (SUCCEEDED / FAILED)
+
+    Note over App,DB: Phase 3: Local Settlement & State Transition (DB Transaction 2)
+    alt Gateway Succeeded
+        App->>DB: BEGIN Transaction 2
+        App->>DB: UPDATE payments SET status = 'SUCCEEDED', gatewayResponse = ...
+        App->>DB: UPDATE orders SET status = 'PAID'
+        App->>DB: COMMIT Transaction 2
+        App-->>Customer: HTTP 200 OK (Payment Confirmed, Order PAID)
+    else Gateway Failed (e.g. Card Declined)
+        App->>DB: BEGIN Transaction 2
+        App->>DB: UPDATE payments SET status = 'FAILED', gatewayResponse = ...
+        opt releaseInventoryOnFailure = true
+            App->>DB: UPDATE orders SET status = 'CANCELLED'
+            App->>DB: UPDATE products SET stock = stock + qty (Restock)
+            App->>DB: INSERT INTO inventory_records (changeType = 'CANCELLATION_RESTOCK')
+        end
+        App->>DB: COMMIT Transaction 2
+        App-->>Customer: HTTP 402 Payment Required (Decline Details, Order PENDING or CANCELLED)
     end
 ```
 
-### Order Lifecycle State Machine
-Orders transition strictly according to the following deterministic state transitions:
+### 5.3 Order & Payment State Machine Transitions
+Orders and payments transition strictly according to deterministic state machines:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING_PAYMENT : Order Created & Stock Reserved
-    PENDING_PAYMENT --> PAID : Payment Success (Simulated Gateway)
-    PENDING_PAYMENT --> CANCELLED : Customer Explicit Cancel
-    PENDING_PAYMENT --> EXPIRED : 15-Minute Reservation TTL Elapsed (BullMQ)
-    
-    PAID --> SHIPPED : Admin Dispatches Order
-    SHIPPED --> DELIVERED : Delivery Confirmed
-    PAID --> REFUNDED : Admin/Customer Refund Processed
-    
-    CANCELLED --> [*] : Stock Released to Inventory
-    EXPIRED --> [*] : Stock Released to Inventory
-    DELIVERED --> [*]
-    REFUNDED --> [*] : Stock Optionally Restocked
+    [*] --> INITIATED : Payment Intent Initialized
+    INITIATED --> SUCCEEDED : Gateway Authorizes Charge
+    INITIATED --> FAILED : Card Declined / Insufficient Funds / Timeout
+
+    state OrderLifecycle {
+        [*] --> PENDING_PAYMENT : Order Created & Stock Reserved
+        PENDING_PAYMENT --> PAID : Payment SUCCEEDED
+        PENDING_PAYMENT --> CANCELLED : Customer Cancels / Terminal Failure
+        PENDING_PAYMENT --> EXPIRED : 15-Minute Reservation TTL Elapsed (BullMQ)
+        PAID --> SHIPPED : Order Fulfilled
+        CANCELLED --> [*] : Stock Restocked
+        EXPIRED --> [*] : Stock Restocked
+    }
 ```
+
+### 5.4 Inventory Recovery & Failure Strategies
+- **Transient Decline (`releaseInventoryOnFailure: false`):**
+  If a customer's payment is declined (e.g., incorrect CVV, bank limit), the `Payment` is marked as `FAILED`, but the `Order` remains in `PENDING_PAYMENT`. This preserves the reserved inventory and gives the customer the opportunity to retry payment with another payment instrument before their 15-minute reservation window elapses.
+- **Terminal Failure or Explicit Cancellation (`releaseInventoryOnFailure: true`):**
+  If the customer cancels or requests release on failure:
+  1. `Order.status` transitions to `CANCELLED`.
+  2. Product inventory is atomically restocked (`stock = stock + quantity`).
+  3. An immutable audit record is logged in `inventory_records` with `changeType: 'CANCELLATION_RESTOCK'`.
+- **Reservation Expiry (Phase 7):**
+  If an order remains in `PENDING_PAYMENT` for 15 minutes without successful payment, BullMQ background jobs transition the order to `EXPIRED` and restock inventory (`EXPIRATION_RELEASE`).
 
 ---
 
