@@ -44,6 +44,10 @@ class AppError extends Error {
     return new AppError(message, HttpStatus.CONFLICT, code, details);
   }
 
+  static paymentRequired(message = 'Payment failed', details = null) {
+    return new AppError(message, HttpStatus.PAYMENT_REQUIRED, ErrorCodes.PAYMENT_FAILED, details);
+  }
+
   static internal(message = 'Internal server error', details = null) {
     return new AppError(message, HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodes.INTERNAL_ERROR, details);
   }
