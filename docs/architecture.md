@@ -98,9 +98,9 @@ quickcart/
 
 ---
 
-## 4. Concurrency & Inventory Race Condition Strategy
+## 4. Concurrency & Inventory Consistency Strategy
 
-### The Problem: Check-Then-Act Race Condition
+### 4.1 The Problem: Check-Then-Act Race Condition
 In high-concurrency scenarios (e.g., flash sales), multiple users may attempt to purchase the last unit of an item simultaneously.
 A naive approach reads the stock first:
 ```sql
@@ -112,23 +112,46 @@ UPDATE products SET stock = stock - 1 WHERE id = 'prod-123';
 -- Result: Stock becomes -1 (Overselling / Stock Corruption)
 ```
 
-### Concurrency Strategies Evaluated for QuickCart
+### 4.2 Concurrency Strategies Evaluated & Trade-off Analysis
 
-| Strategy | Mechanism | Pros | Cons | Decision |
+| Strategy | Mechanism | Pros | Cons & Trade-offs | Decision in QuickCart |
 | :--- | :--- | :--- | :--- | :--- |
-| **Pessimistic Locking** (`SELECT ... FOR UPDATE`) | Row-level exclusive lock during transaction | Prevents any concurrent read/write until committed | High lock contention; throughput bottleneck; deadlock risk | Used selectively for complex multi-product atomic batches |
-| **Optimistic Concurrency Control (OCC)** | Version counter (`WHERE id = ? AND version = ?`) | Non-blocking; excellent for low-write contention | High retry overhead when multiple clients compete | Ideal for product metadata edits by admins |
-| **Atomic Conditional Update** | Single atomic SQL statement with guard condition | Highest throughput; zero lock wait time; ACID compliant | Requires raw SQL or custom Prisma query | **Primary Strategy for Checkout** |
+| **Serializable Isolation** | PostgreSQL detects rw-antidependencies (SSI) and aborts conflicting txs | Clean theoretical model; prevents all anomalies without explicit locks | Extremely high abort rate (`40001 serialization_failure`) under flash-sale write spikes; requires complex exponential backoff retry loops | Rejected for checkout writes due to excessive retry overhead |
+| **Optimistic Concurrency Control (OCC)** | Version counter (`WHERE id = ? AND version = ?`) | Zero lock wait time; non-blocking reads | High retry storms when dozens of clients compete for the last item; only 1 succeeds, all others must retry | Used exclusively for low-contention Admin product edits |
+| **Pessimistic Row Locking** (`SELECT ... FOR UPDATE`) | Row-level exclusive lock during transaction | Guarantees transaction reads latest committed state; serializes access | Hold time equals transaction duration; risk of deadlock if items locked in arbitrary order | Combined with global key ordering for multi-item checkouts |
+| **Atomic Conditional Update** (`UPDATE ... WHERE stock >= requested`) | PostgreSQL atomic write lock with guard condition in a single statement | Maximum throughput; zero lock wait before update; engine-level serialization | Returns row count 0 on stock exhaustion, triggering immediate transaction rollback | **Primary Engine for Checkout Inventory Reservation** |
 
-### Selected Concurrency Implementation: Atomic Conditional Update
-Stock deduction is executed using an atomic condition at the database engine level:
-```sql
-UPDATE "Product"
-SET "stock" = "stock" - $1, "updatedAt" = NOW()
-WHERE "id" = $2 AND "stock" >= $1
-RETURNING "id", "stock";
+### 4.3 Deadlock Prevention via Global Deterministic Key Ordering
+When multiple users check out carts containing overlapping sets of products simultaneously:
+- **Transaction 1** locks Product A, then attempts to lock Product B.
+- **Transaction 2** locks Product B, then attempts to lock Product A.
+- **Result:** Classical circular wait resulting in PostgreSQL `deadlock detected (40P01)`.
+
+**QuickCart Solution:**
+Before entering the database transaction, cart items are sorted deterministically by `productId` in ascending order:
+```javascript
+const sortedItems = [...cart.items].sort((a, b) => a.productId.localeCompare(b.productId));
 ```
-If the number of affected rows is `0`, the service instantly detects an inventory shortage and aborts the transaction with an explicit `409 Conflict` (Out of Stock), guaranteeing zero overselling.
+Because all concurrent transactions acquire product locks in the exact same global order, circular wait is mathematically impossible, eliminating deadlocks.
+
+### 4.4 Checkout Inventory Execution & Rollback Guarantees
+Stock deduction is executed within an interactive `prisma.$transaction`:
+```sql
+UPDATE "products"
+SET "stock" = "stock" - $1,
+    "version" = "version" + 1,
+    "updatedAt" = NOW()
+WHERE "id" = $2 AND "stock" >= $1 AND "isActive" = true
+RETURNING "id", "name", "sku", "price", "stock", "isActive";
+```
+1. **Engine-Level Lock:** PostgreSQL acquires an exclusive tuple write-lock during `UPDATE`.
+2. **Atomic Verification:** The condition `"stock" >= $1` evaluates against the latest committed tuple.
+3. **Instant Detection:** If 0 rows are returned, the service throws `AppError.conflict('Insufficient stock')`.
+4. **All-or-Nothing Rollback:** If any item in a multi-item cart fails stock validation, the entire interactive transaction issues `ROLLBACK`:
+   - All previously decremented stocks are restored.
+   - Zero `order_items` are created.
+   - No `inventory_records` ledger rows are persisted.
+   - The user's cart remains completely intact.
 
 ---
 

@@ -99,6 +99,11 @@ quickcart/
 │   │   │   ├── health.controller.js
 │   │   │   ├── health.routes.js
 │   │   │   └── health.service.js
+│   │   ├── orders/           # Orders, inventory reservation & checkout ACID transactions
+│   │   │   ├── orders.controller.js
+│   │   │   ├── orders.routes.js
+│   │   │   ├── orders.service.js
+│   │   │   └── orders.validation.js
 │   │   └── products/         # Product catalog, filtering, search & pagination domain
 │   │       ├── products.controller.js
 │   │       ├── products.routes.js
@@ -118,6 +123,7 @@ quickcart/
     │   ├── cart.test.js      # Supertest integration tests for cart lifecycle, price authority, IDOR defense
     │   ├── categories.test.js# Supertest integration tests for category hierarchy, CRUD, and admin RBAC
     │   ├── health.test.js    # Supertest integration tests for /api/v1/health, 404, malformed JSON
+    │   ├── orders.test.js    # Supertest integration tests for checkout, rollback, idempotency, race conditions
     │   └── products.test.js  # Supertest integration tests for catalog, search, pagination, price bounds
     └── unit/
         ├── api-response.test.js       # Unit tests for response envelopes
@@ -128,6 +134,7 @@ quickcart/
         ├── categories-service.test.js # Unit tests for category tree and CRUD logic
         ├── error-handler.test.js      # Unit tests for centralized error middleware
         ├── logger.test.js             # Unit tests for logger utility
+        ├── orders-service.test.js     # Unit tests for checkout ACID transactions, stock reservation, restock
         ├── password.test.js           # Unit tests for bcrypt hashing & comparison
         ├── products-service.test.js   # Unit tests for product filtering, active state rules, and stock logic
         ├── rate-limiter.test.js       # Unit tests for rate limiting error handler
