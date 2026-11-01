@@ -4,6 +4,7 @@ const authRoutes = require('../modules/auth/auth.routes');
 const categoriesRoutes = require('../modules/categories/categories.routes');
 const productsRoutes = require('../modules/products/products.routes');
 const cartRoutes = require('../modules/cart/cart.routes');
+const ordersRoutes = require('../modules/orders/orders.routes');
 
 const router = Router();
 
@@ -13,5 +14,6 @@ router.use('/auth', authRoutes);
 router.use('/categories', categoriesRoutes);
 router.use('/products', productsRoutes);
 router.use('/cart', cartRoutes);
+router.use('/orders', ordersRoutes);
 
 module.exports = router;
