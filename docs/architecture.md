@@ -250,18 +250,75 @@ stateDiagram-v2
 
 ---
 
-## 6. Caching Architecture & Invalidation
+## 6. Caching & Asynchronous Processing Architecture (Phase 7)
 
-QuickCart adopts a **Cache-Aside (Lazy Loading)** model backed by Redis:
+### 6.1 Cache-Aside (Lazy Loading) Architecture
+QuickCart employs a strictly non-authoritative **Cache-Aside** strategy powered by Redis to offload read-heavy catalog operations:
 
-1. **Read Request:** Check Redis for key `quickcart:product:{id}`.
-   - *Hit:* Return cached product directly (sub-5ms response).
-   - *Miss:* Query PostgreSQL via Prisma, write result to Redis with a TTL (e.g., 300 seconds), and return.
-2. **Write / Invalidation:** When an admin modifies or deletes a product:
-   - Perform the database write.
-   - Invalidate specific item cache: `DEL quickcart:product:{id}`.
-   - Invalidate related list cache keys: `DEL quickcart:products:catalog:*`.
-3. **Cache Stampede Prevention:** Hot keys utilize background refreshing or short mutex locks during re-population to avoid thundering-herd spikes on the primary database.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant App as Express Service Layer
+    participant Cache as Redis In-Memory Cache
+    participant DB as PostgreSQL Database
+
+    Client->>App: GET /api/v1/products?category=electronics&page=1
+    App->>Cache: GET quickcart:catalog:list:{sha256(sortedQuery)}
+    alt Cache Hit
+        Cache-->>App: Return cached JSON payload
+        App-->>Client: HTTP 200 OK (X-Cache: HIT, ~2-4ms)
+    else Cache Miss / Redis Unavailable
+        Cache-->>App: null (or fail-open timeout)
+        App->>DB: Query products with pagination & filters
+        DB-->>App: Return authoritative records
+        App->>Cache: SETEX key TTL (300s) serialized JSON
+        App-->>Client: HTTP 200 OK (X-Cache: MISS, ~20-40ms)
+    end
+```
+
+### 6.2 Key Hierarchy & Expiration (TTL) Matrix
+To balance read performance with eventual consistency, TTLs are assigned based on entity mutation volatility:
+
+| Entity / Resource | Redis Key Pattern | TTL | Rationale |
+| :--- | :--- | :--- | :--- |
+| **Category Tree** | `quickcart:category:list` | 3,600s (1h) | Highly static hierarchy; infrequently modified. |
+| **Product Detail** | `quickcart:product:{id}` & `quickcart:product:slug:{slug}` | 900s (15m) | Moderately static; requires rapid access on product detail page. |
+| **Filtered Catalog Lists** | `quickcart:catalog:list:{sha256(sortedParams)}` | 300s (5m) | Highly dynamic query combinations with variable pagination. |
+| **User Carts, Orders, Auth** | *NEVER CACHED IN REDIS* | 0s | **Zero-Leak Policy**: Sensitive user data is strictly non-cacheable to eliminate cross-session data leaks and stale cart pricing. |
+
+### 6.3 Non-Blocking Surgical Invalidation Pattern
+When an administrator modifies, creates, or deletes a product or category, QuickCart avoids broad flush commands (`FLUSHDB` or `KEYS *`) that block the single-threaded Redis event loop.
+
+Instead, the service executes **Surgical Invalidation**:
+1. Specific entity keys are deleted directly: `DEL quickcart:product:{id}` and `DEL quickcart:product:slug:{slug}`.
+2. Filtered list query caches are purged using batched, non-blocking **`SCAN` iteration** (`SCAN cursor MATCH quickcart:catalog:list:* COUNT 100`) followed by batched `UNLINK`/`DEL`.
+3. If Redis is unavailable during invalidation, the operation fails open without throwing unhandled exceptions; subsequent reads continue directly against PostgreSQL.
+
+### 6.4 Hybrid Distributed Rate Limiting
+To support horizontal scaling across multiple Node.js instances while ensuring high availability:
+- **Primary Mechanism:** Redis-backed sliding window via `rate-limit-redis` storing IP/user hit counts in shared Redis memory.
+- **Graceful Fallback:** If Redis is down at boot or disconnects at runtime, the custom `HybridRateLimitStore` transparently diverts rate-limiting tracking to an in-process LRU `MemoryStore` with `passOnStoreError: true`. The API remains protected from abusive volumetric traffic without dropping legitimate customer requests.
+
+### 6.5 Asynchronous Processing & Queue Resilience (BullMQ)
+Asynchronous tasks such as order confirmation notifications are offloaded to **BullMQ** job queues:
+- **Decoupled Settlement:** When a payment succeeds, the order status transitions to `PAID` within an ACID database transaction. Immediately after database commit, `notificationQueue.addOrderConfirmationJob(...)` enqueues an asynchronous notification event.
+- **Bounded Exponential Backoff Retries:**
+  Jobs are configured with `attempts: 3` and an exponential backoff curve:
+  $$\text{Delay}(n) = 1000 \times 2^{n-1} \text{ ms}$$
+  Transient network errors or rate limits from email/SMS gateways do not block customer checkout.
+- **Idempotent Job Processing:**
+  Jobs use deterministic IDs: `jobId: 'order-notification-' + orderId`. Duplicate events within the retry window are naturally deduplicated by BullMQ. Furthermore, the worker enforces application-level idempotency checks before firing third-party webhooks.
+- **Dead Letter Queue (DLQ) & Audit:**
+  Jobs that exhaust all 3 retry attempts are intercepted by worker event listeners, logged with full stack traces, and flagged for manual dead-letter triage.
+
+### 6.6 Non-Authoritative Redis vs. PostgreSQL Source of Truth
+Under no circumstances is Redis treated as the authoritative source of truth for inventory counts or order states:
+- **Inventory & Orders:** Kept exclusively in PostgreSQL, guarded by database row-level locking and atomic conditional updates (`WHERE stock >= requested`).
+- **Redis Failure Boundary:** If Redis crashes completely:
+  - Cache reads return `null` $\to$ transparent fallback to PostgreSQL.
+  - Rate limiting switches to local memory store.
+  - Asynchronous notification jobs log a non-fatal warning $\to$ customer payment and order creation complete successfully with `HTTP 200 OK`.
 
 ---
 

@@ -72,13 +72,17 @@ quickcart/
 │   │   └── logger.js         # Structured JSON / formatted console logger
 │   ├── constants/
 │   │   └── http-status.js    # HTTP status codes and domain error codes enum
+│   ├── jobs/                 # BullMQ asynchronous queue & background workers
+│   │   ├── notification.queue.js  # Order confirmation queue with bounded exponential retries
+│   │   └── notification.worker.js # Idempotent worker with audit tracking & DLQ alert
 │   ├── lib/
-│   │   └── prisma.js         # PrismaClient singleton with event logging
+│   │   ├── prisma.js         # PrismaClient singleton with event logging
+│   │   └── redis.js          # Resilient ioredis client singleton with non-blocking scanDel & fallback
 │   ├── middlewares/
 │   │   ├── auth.js           # JWT authentication and Role-Based Access Control (RBAC)
 │   │   ├── error-handler.js  # Centralized global error handler (Prisma, Zod, AppError)
 │   │   ├── not-found.js      # 404 handler for unmatched routes
-│   │   ├── rate-limiter.js   # Tiered rate limiters (strict auth & general API)
+│   │   ├── rate-limiter.js   # Hybrid distributed rate limiters (RedisStore with MemoryStore fallback)
 │   │   ├── request-logger.js # Morgan HTTP request logging with response latency
 │   │   └── validate.js       # Reusable Zod schema request validation middleware
 │   ├── modules/
@@ -119,6 +123,8 @@ quickcart/
 │   │       └── products.validation.js
 │   ├── routes/
 │   │   └── api.routes.js     # Top-level API router mounting module sub-routers
+│   ├── services/
+│   │   └── cache.service.js  # Non-authoritative catalog cache-aside with surgical SCAN invalidation
 │   └── utils/
 │       ├── api-response.js   # Standard success/error JSON response envelope formatters
 │       ├── app-error.js      # Operational domain error class with static helpers
@@ -130,24 +136,30 @@ quickcart/
     │   ├── auth.test.js      # Supertest integration tests for register, login, me, refresh, logout, RBAC
     │   ├── cart.test.js      # Supertest integration tests for cart lifecycle, price authority, IDOR defense
     │   ├── categories.test.js# Supertest integration tests for category hierarchy, CRUD, and admin RBAC
+    │   ├── distributed-rate-limiter.test.js # Distributed rate limiting and graceful in-memory fallback
     │   ├── health.test.js    # Supertest integration tests for /api/v1/health, 404, malformed JSON
     │   ├── orders.test.js    # Supertest integration tests for checkout, rollback, idempotency, race conditions
     │   ├── payments.test.js  # Supertest integration tests for simulated payment, idempotency replay, declines
-    │   └── products.test.js  # Supertest integration tests for catalog, search, pagination, price bounds
+    │   ├── products.test.js  # Supertest integration tests for catalog, search, pagination, price bounds
+    │   └── redis-caching.test.js # Cache-aside hits/misses, surgical invalidation, zero-leak privacy
     └── unit/
         ├── api-response.test.js       # Unit tests for response envelopes
         ├── app-error.test.js          # Unit tests for AppError factory
         ├── auth-middleware.test.js    # Unit tests for JWT verification & role authorization
         ├── auth-service.test.js       # Unit tests for authentication logic & token reuse protocol
+        ├── cache-service.test.js      # Unit tests for deterministic hashing and surgical invalidation
         ├── cart-service.test.js       # Unit tests for live decimal pricing, stock limits, and IDOR isolation
         ├── categories-service.test.js # Unit tests for category tree and CRUD logic
         ├── error-handler.test.js      # Unit tests for centralized error middleware
         ├── logger.test.js             # Unit tests for logger utility
+        ├── notification-queue.test.js # Unit tests for BullMQ queue, fail-open resilience, and jobId
+        ├── notification-worker.test.js# Unit tests for idempotent job execution and DLQ handling
         ├── orders-service.test.js     # Unit tests for checkout ACID transactions, stock reservation, restock
         ├── password.test.js           # Unit tests for bcrypt hashing & comparison
         ├── payments-service.test.js   # Unit tests for 3-phase decoupled payments, idempotency, state transitions
         ├── products-service.test.js   # Unit tests for product filtering, active state rules, and stock logic
         ├── rate-limiter.test.js       # Unit tests for rate limiting error handler
+        ├── redis-client.test.js       # Unit tests for ioredis singleton and offline fail-open wrappers
         ├── simulated-payment-provider.test.js # Unit tests for PCI-DSS simulated gateway provider
         ├── slugify.test.js            # Unit tests for slugify string transformation
         ├── token.test.js              # Unit tests for JWT signing & SHA-256 token hashing
