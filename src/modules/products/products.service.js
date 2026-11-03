@@ -3,6 +3,7 @@ const prisma = require('../../lib/prisma');
 const config = require('../../config/env');
 const AppError = require('../../utils/app-error');
 const slugify = require('../../utils/slugify');
+const cacheService = require('../../services/cache.service');
 
 class ProductsService {
   /**
@@ -34,6 +35,17 @@ class ProductsService {
     // Product Active State Rule: Public users can only see active products.
     // Admins can see all, active, or inactive products based on query.
     const isAdmin = user && user.role === 'ADMIN';
+
+    // Only cache public unauthenticated or customer catalog queries (never admin queries with inactive items)
+    let cacheKey = null;
+    if (!isAdmin) {
+      cacheKey = cacheService.generateCatalogQueryKey(query);
+      const cached = await cacheService.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
     if (!isAdmin) {
       where.isActive = true;
     } else if (query.isActive === 'true') {
@@ -105,7 +117,7 @@ class ProductsService {
 
     const formattedProducts = products.map((p) => this.formatProduct(p));
 
-    return {
+    const result = {
       products: formattedProducts,
       meta: {
         page,
@@ -114,6 +126,12 @@ class ProductsService {
         totalPages: Math.ceil(total / limit)
       }
     };
+
+    if (cacheKey) {
+      await cacheService.set(cacheKey, result, cacheService.ttl.PRODUCT_LIST);
+    }
+
+    return result;
   }
 
   /**
@@ -122,6 +140,14 @@ class ProductsService {
    * @param {Object|null} user - Authenticated user context
    */
   async getProductById(id, user = null) {
+    const isAdmin = user && user.role === 'ADMIN';
+    const cacheKey = !isAdmin ? cacheService.getProductIdKey(id) : null;
+
+    if (cacheKey) {
+      const cached = await cacheService.get(cacheKey);
+      if (cached) return cached;
+    }
+
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
@@ -137,12 +163,17 @@ class ProductsService {
     }
 
     // Public / Customer visibility check
-    const isAdmin = user && user.role === 'ADMIN';
     if (!product.isActive && !isAdmin) {
       throw AppError.notFound('Product not found');
     }
 
-    return this.formatProduct(product);
+    const formatted = this.formatProduct(product);
+
+    if (cacheKey && product.isActive) {
+      await cacheService.set(cacheKey, formatted, cacheService.ttl.PRODUCT_DETAIL);
+    }
+
+    return formatted;
   }
 
   /**
@@ -151,8 +182,17 @@ class ProductsService {
    * @param {Object|null} user - Authenticated user context
    */
   async getProductBySlug(slug, user = null) {
+    const isAdmin = user && user.role === 'ADMIN';
+    const normalizedSlug = slug.toLowerCase().trim();
+    const cacheKey = !isAdmin ? cacheService.getProductSlugKey(normalizedSlug) : null;
+
+    if (cacheKey) {
+      const cached = await cacheService.get(cacheKey);
+      if (cached) return cached;
+    }
+
     const product = await prisma.product.findUnique({
-      where: { slug: slug.toLowerCase().trim() },
+      where: { slug: normalizedSlug },
       include: {
         category: { select: { id: true, name: true, slug: true } },
         images: {
@@ -165,12 +205,17 @@ class ProductsService {
       throw AppError.notFound('Product not found');
     }
 
-    const isAdmin = user && user.role === 'ADMIN';
     if (!product.isActive && !isAdmin) {
       throw AppError.notFound('Product not found');
     }
 
-    return this.formatProduct(product);
+    const formatted = this.formatProduct(product);
+
+    if (cacheKey && product.isActive) {
+      await cacheService.set(cacheKey, formatted, cacheService.ttl.PRODUCT_DETAIL);
+    }
+
+    return formatted;
   }
 
   /**
@@ -232,6 +277,8 @@ class ProductsService {
         images: true
       }
     });
+
+    await cacheService.invalidateProduct({ id: createdProduct.id, slug: createdProduct.slug });
 
     return this.formatProduct(createdProduct);
   }
@@ -327,6 +374,8 @@ class ProductsService {
       });
     });
 
+    await cacheService.invalidateProduct({ id: updated.id, slug: updated.slug });
+
     return this.formatProduct(updated);
   }
 
@@ -360,6 +409,7 @@ class ProductsService {
         where: { id },
         data: { isActive: false }
       });
+      await cacheService.invalidateProduct({ id, slug: product.slug });
       return { deleted: true, softDeleted: true, id };
     }
 
@@ -367,6 +417,8 @@ class ProductsService {
     await prisma.product.delete({
       where: { id }
     });
+
+    await cacheService.invalidateProduct({ id, slug: product.slug });
 
     return { deleted: true, softDeleted: false, id };
   }

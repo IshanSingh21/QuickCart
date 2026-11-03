@@ -1,6 +1,7 @@
 const prisma = require('../../lib/prisma');
 const AppError = require('../../utils/app-error');
 const slugify = require('../../utils/slugify');
+const cacheService = require('../../services/cache.service');
 
 class CategoriesService {
   /**
@@ -8,6 +9,12 @@ class CategoriesService {
    * @param {Object} options - { tree?: boolean }
    */
   async listCategories({ tree = true } = {}) {
+    const cacheKey = cacheService.getCategoryKey(tree);
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     if (tree) {
       // Fetch top-level categories with recursive nested children
       const rootCategories = await prisma.category.findMany({
@@ -24,6 +31,8 @@ class CategoriesService {
         },
         orderBy: { name: 'asc' }
       });
+
+      await cacheService.set(cacheKey, rootCategories, cacheService.ttl.CATEGORIES);
       return rootCategories;
     }
 
@@ -34,6 +43,8 @@ class CategoriesService {
       },
       orderBy: { name: 'asc' }
     });
+
+    await cacheService.set(cacheKey, categories, cacheService.ttl.CATEGORIES);
     return categories;
   }
 
@@ -98,6 +109,8 @@ class CategoriesService {
       }
     });
 
+    await cacheService.invalidateCategory();
+
     return category;
   }
 
@@ -157,6 +170,8 @@ class CategoriesService {
       }
     });
 
+    await cacheService.invalidateCategory();
+
     return updated;
   }
 
@@ -192,6 +207,8 @@ class CategoriesService {
     await prisma.category.delete({
       where: { id }
     });
+
+    await cacheService.invalidateCategory();
 
     return { deleted: true, id };
   }
