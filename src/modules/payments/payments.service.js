@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { Prisma } = require('@prisma/client');
 const prisma = require('../../lib/prisma');
 const simulatedPaymentProvider = require('./simulated-payment-provider');
+const notificationQueue = require('../../jobs/notification.queue');
 const AppError = require('../../utils/app-error');
 
 class PaymentService {
@@ -231,6 +232,17 @@ class PaymentService {
 
         return paymentRecord;
       });
+
+      // Asynchronously enqueue background notification job (non-blocking post-commit)
+      notificationQueue
+        .addOrderConfirmationJob({
+          orderId,
+          orderNumber: order.orderNumber,
+          userId,
+          totalAmount: new Prisma.Decimal(order.totalAmount).toFixed(2),
+          currency: order.currency
+        })
+        .catch(() => {});
 
       return {
         payment: this.formatPayment(settledPayment),
