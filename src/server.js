@@ -2,6 +2,9 @@ const app = require('./app');
 const config = require('./config/env');
 const logger = require('./config/logger');
 const prisma = require('./lib/prisma');
+const redisClient = require('./lib/redis');
+const notificationQueue = require('./jobs/notification.queue');
+const notificationWorker = require('./jobs/notification.worker');
 
 const PORT = config.port;
 
@@ -18,6 +21,11 @@ const gracefulShutdown = async (signal) => {
     logger.info('HTTP server closed.');
 
     try {
+      await notificationWorker.close();
+      await notificationQueue.close();
+      await redisClient.disconnect();
+      logger.info('Redis and Background queue connections closed cleanly.');
+
       await prisma.$disconnect();
       logger.info('Database connection closed cleanly.');
       process.exit(0);

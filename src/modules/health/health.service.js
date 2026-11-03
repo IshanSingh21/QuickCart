@@ -1,4 +1,5 @@
 const prisma = require('../../lib/prisma');
+const redisClient = require('../../lib/redis');
 const config = require('../../config/env');
 const packageJson = require('../../../package.json');
 
@@ -38,6 +39,14 @@ class HealthService {
     const uptimeSeconds = Math.floor(process.uptime());
     const memory = process.memoryUsage();
 
+    // Probe Redis connectivity (non-blocking)
+    let redisStatus = { status: 'disconnected', latencyMs: null };
+    try {
+      redisStatus = await redisClient.ping();
+    } catch (err) {
+      redisStatus = { status: 'disconnected', latencyMs: null };
+    }
+
     return {
       status: isOverallHealthy ? 'healthy' : 'degraded',
       timestamp: new Date().toISOString(),
@@ -50,7 +59,8 @@ class HealthService {
         heapTotalMb: Math.round(memory.heapTotal / 1024 / 1024)
       },
       services: {
-        database: dbStatus
+        database: dbStatus,
+        redis: redisStatus
       }
     };
   }
