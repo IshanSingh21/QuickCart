@@ -13,13 +13,36 @@ const ApiResponse = require('./utils/api-response');
 
 const app = express();
 
-// Security HTTP headers
-app.use(helmet());
+// Hardened Security HTTP headers for REST API
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false
+}));
 
-// Enable CORS
+// Dynamic CORS configuration complying with W3C specification for credentialed requests
+const allowedOrigins = config.corsOrigin
+  ? config.corsOrigin.split(',').map((o) => o.trim())
+  : ['*'];
+
 app.use(cors({
-  origin: config.corsOrigin,
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow non-browser clients (mobile, server-to-server, curl) with no origin header
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes('*')) {
+      // Reflect origin to comply with CORS spec when credentials: true
+      return callback(null, origin);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, origin);
+    }
+
+    return callback(new Error('Blocked by CORS policy'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Requested-With']
 }));
 
 // Body parsing middlewares with safe payload limits

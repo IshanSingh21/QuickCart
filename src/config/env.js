@@ -5,16 +5,33 @@ const dotenv = require('dotenv');
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-const requiredEnvVars = ['DATABASE_URL'];
+const requiredEnvVars = ['DATABASE_URL', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'];
 
-// Fail fast in production if critical variables are missing
-if (process.env.NODE_ENV === 'production') {
-  for (const envVar of requiredEnvVars) {
-    if (!process.env[envVar]) {
-      throw new Error(`CRITICAL STARTUP ERROR: Environment variable ${envVar} is required in production.`);
+const DEFAULT_DEV_SECRETS = [
+  'quickcart_default_access_secret_for_development_only_12345',
+  'quickcart_default_refresh_secret_for_development_only_67890',
+  'quickcart_dev_jwt_access_secret_super_secure_key_12345',
+  'quickcart_dev_jwt_refresh_secret_super_secure_key_67890'
+];
+
+function validateProductionSecrets(env = process.env) {
+  if (env.NODE_ENV === 'production') {
+    for (const envVar of requiredEnvVars) {
+      const val = env[envVar];
+      if (!val) {
+        throw new Error(`CRITICAL STARTUP ERROR: Environment variable ${envVar} is required in production.`);
+      }
+      if (DEFAULT_DEV_SECRETS.includes(val) || val.length < 32) {
+        throw new Error(
+          `CRITICAL STARTUP ERROR: ${envVar} is using an insecure default or is shorter than 32 characters in production.`
+        );
+      }
     }
   }
 }
+
+// Fail fast in production if critical variables are missing or insecure
+validateProductionSecrets(process.env);
 
 const config = {
   env: process.env.NODE_ENV || 'development',
@@ -61,7 +78,9 @@ const config = {
 
   logging: {
     level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'silent' : 'info')
-  }
+  },
+
+  validateProductionSecrets
 };
 
 module.exports = config;

@@ -13,17 +13,48 @@ const currentLevel = (() => {
   return LogLevels[level] !== undefined ? LogLevels[level] : (config.env === 'test' ? LogLevels.SILENT : LogLevels.INFO);
 })();
 
+const SENSITIVE_KEY_REGEX = /password|token|secret|authorization|cookie|cardnumber|cvv|creditcard|apikey/i;
+
+/**
+ * Deeply sanitizes sensitive data fields (e.g. passwords, tokens, credit card info)
+ * before serialization to logs to protect against sensitive data exposure (OWASP A09).
+ */
+function sanitizeData(data, visited = new WeakSet()) {
+  if (data === null || data === undefined) return data;
+  if (typeof data !== 'object') return data;
+
+  if (visited.has(data)) return '[CIRCULAR]';
+  visited.add(data);
+
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeData(item, visited));
+  }
+
+  const sanitized = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (SENSITIVE_KEY_REGEX.test(key)) {
+      sanitized[key] = '[REDACTED]';
+    } else if (typeof value === 'object' && value !== null) {
+      sanitized[key] = sanitizeData(value, visited);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 function formatMessage(level, message, meta) {
   const timestamp = new Date().toISOString();
+  const safeMeta = meta ? sanitizeData(meta) : null;
   if (config.env === 'production') {
     return JSON.stringify({
       timestamp,
       level,
       message,
-      ...(meta && typeof meta === 'object' ? meta : { meta })
+      ...(safeMeta && typeof safeMeta === 'object' ? safeMeta : { meta: safeMeta })
     });
   }
-  const metaStr = meta ? ` ${JSON.stringify(meta)}` : '';
+  const metaStr = safeMeta ? ` ${JSON.stringify(safeMeta)}` : '';
   return `[${timestamp}] [${level}] ${message}${metaStr}`;
 }
 
@@ -47,7 +78,9 @@ const logger = {
     if (currentLevel <= LogLevels.ERROR) {
       console.error(formatMessage('ERROR', message, meta));
     }
-  }
+  },
+  sanitizeData,
+  formatMessage
 };
 
 module.exports = logger;

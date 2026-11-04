@@ -70,6 +70,10 @@ class NotificationWorker {
    * @returns {Promise<Object>}
    */
   async processJob(job) {
+    if (!job || !job.data || !job.data.orderId) {
+      throw new Error('Malformed notification job: missing required orderId');
+    }
+
     const { orderId, orderNumber, recipientEmail, totalAmount, currency, simulateFailure } = job.data;
 
     // 1. Idempotency Check: prevent duplicate email dispatch on worker retry
