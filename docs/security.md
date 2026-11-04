@@ -64,4 +64,21 @@
 
 ### 2.8 Security Logging & Error Sanitization (OWASP A09)
 - **No Stack Trace Leakage:** In production (`NODE_ENV=production`), internal database error messages, stack traces, and SQL queries are logged internally via structured logger but never exposed in HTTP error responses. Clients receive generic, actionable messages (`INTERNAL_SERVER_ERROR`).
-- **Secret Masking:** Logs automatically sanitize sensitive fields (`password`, `token`, `cardNumber`, `authorization`).
+- **Secret Masking:** Logs automatically sanitize sensitive fields (`password`, `token`, `cardNumber`, `authorization`, `secret`, `apiKey`).
+
+---
+
+## 3. Phase 8 Security Review & Vulnerability Audit Matrix
+
+### 3.1 Audit Findings & Mitigations
+
+| Security Domain | Risk Assessment | Mitigation Implemented | Verification Test Suite |
+| :--- | :--- | :--- | :--- |
+| **SQL Injection** | **Zero Risk:** All database access is parameterized via Prisma ORM. Atomic inventory decrements use Prisma's tagged template literal `tx.$queryRaw\`...\`` with parameterized bind variables. | Probed with classical injection strings (`' OR '1'='1`, `'; DROP TABLE products; --`, UNION queries). | `tests/integration/security-and-headers.test.js` |
+| **Production Secrets** | **High (Pre-Audit) $\to$ Mitigated:** Development fallback JWT secrets could previously be used in production if unconfigured. | Implemented `validateProductionSecrets()`: enforces that `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are mandatory, non-default, and $\ge 32$ characters in production; fails fast on boot. | `tests/unit/production-secrets.test.js` |
+| **Sensitive Data in Logs** | **Medium (Pre-Audit) $\to$ Mitigated:** Plaintext passwords, tokens, or credit cards in error metadata could leak to server log collectors. | Implemented recursive `sanitizeData()` in logger; redacts sensitive keys matching `/password\|token\|secret\|authorization\|cookie\|cardnumber\|cvv/i` with `[REDACTED]`. Circular references handled via `WeakSet`. | `tests/unit/logger-sanitizer.test.js` |
+| **CORS Misconfiguration** | **Medium (Pre-Audit) $\to$ Mitigated:** Standard wildcard `*` with `credentials: true` violates W3C CORS specifications. | Replaced static string with dynamic validator function that parses comma-separated origins, properly validates caller origin, and reflects permitted origin for credentialed requests. | `tests/integration/security-and-headers.test.js` |
+| **Security Headers** | **Low $\to$ Hardened:** Framework fingerprinting and MIME-sniffing risks. | Configured Helmet with `crossOriginResourcePolicy: { policy: 'cross-origin' }`, `X-Content-Type-Options: nosniff`, and stripped `X-Powered-By`. | `tests/integration/security-and-headers.test.js` |
+| **Rate Limiting & Flooding** | **Low $\to$ Hardened:** Credential stuffing and volumetric DoS. | Configured hybrid sliding-window limiters with `429 Too Many Requests`, `RATE_LIMIT_EXCEEDED` code, and `Retry-After` header. Memory fallback ensures uptime when Redis is offline. | `tests/integration/rate-limiting-stress.test.js` |
+| **Concurrency / Flash Sales** | **Critical $\to$ Verified:** Overselling when concurrent checkouts compete for finite stock. | Verified with 5 simultaneous requests competing for 2 units: exactly 2 succeed with `201 Created`, 3 are rejected with `409 Conflict`, stock reaches exactly 0. Mid-transaction failures abort cleanly without partial records. | `tests/integration/concurrency-and-rollback.test.js` |
+| **Dependency Vulnerabilities** | **Informational / Monitored:** `npm audit` flagged transient vulnerabilities in build tools (`tar` under `bcrypt`'s native builder) and `zod` collection limit. | Body size strictly capped at 10kb (`express.json({ limit: '10kb' })`) to prevent JSON memory exhaustion attacks against schema validators. Native dependencies isolated to server runtime. | `npm audit` |
