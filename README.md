@@ -36,6 +36,8 @@ A production-grade, backend-focused e-commerce RESTful API built as an SDE portf
    - External payment gateway calls are strictly decoupled from database transactions to prevent connection starvation and dual-write split-brain state. Payment attempts enforce unique idempotency keys, safe replay cache, and deterministic state transitions (`INITIATED` -> `SUCCEEDED` / `FAILED`). Zero cardholder data is collected, fully complying with PCI-DSS.
 8. **Comprehensive Security & Concurrency Defense Matrix (Phase 8):**
    - Verified across 36 test suites and 298 automated tests (86.54% line coverage). Implements fail-fast startup checks for production secrets, deep recursive log sanitization for sensitive credentials and card data (OWASP A09), Helmet security headers, W3C-compliant credentialed CORS validation, 10kb request body limits to thwart memory exhaustion DoS attacks, and deterministic tests for concurrent purchases, transaction rollback, and rate limiting.
+9. **Production-Grade Containerization & CI/CD Automation (Phase 9):**
+   - Multi-stage unprivileged Alpine Dockerfile (`USER node`, `dumb-init` PID 1 signal forwarding) and full-stack Docker Compose orchestration (`postgres:16`, `redis:7`, `api`). Automatic database migration deployment on boot via healthcheck dependency gating. Automated GitHub Actions CI workflow executing ESLint, schema validation, test coverage reports, and container build verification without requiring production secrets.
 
 ---
 
@@ -43,11 +45,17 @@ A production-grade, backend-focused e-commerce RESTful API built as an SDE portf
 
 ```
 quickcart/
+├── .github/
+│   └── workflows/
+│       └── ci.yml            # GitHub Actions continuous integration & testing workflow
+├── .dockerignore              # Optimized Docker build context exclusions
+├── Dockerfile                # Production multi-stage Alpine containerization blueprint
 ├── .env.example              # Blueprint for all environment configuration variables
 ├── .env                      # Local development environment configuration (gitignored)
 ├── .env.test                 # Isolated test environment configuration
 ├── .gitignore                # Production git ignore definitions
-├── docker-compose.yml        # PostgreSQL 16 and Redis 7 multi-container orchestration
+├── docker-compose.yml        # PostgreSQL 16, Redis 7, and API service orchestration
+├── eslint.config.js          # ESLint flat configuration for Node.js and Jest
 ├── jest.config.js            # Jest testing configuration and coverage setup
 ├── package.json              # Project manifest and task automation scripts
 ├── README.md                 # Project overview, architecture, and getting started
@@ -181,41 +189,44 @@ quickcart/
 ## 🚀 Quickstart & Verification
 
 ### 1. Prerequisites
-- **Node.js**: v20 or higher
-- **Docker & Docker Compose**: v20+ (or local PostgreSQL 16)
+- **Docker & Docker Compose**: v20+ (recommended for full-stack launch)
+- **Node.js**: v20 or higher (if running API locally on host)
 
-### 2. Environment Setup
+### 2. Quickstart with Docker Compose (Single Command)
 ```bash
+# 1. Copy environment configuration template
 cp .env.example .env
+
+# 2. Build and launch PostgreSQL 16, Redis 7, and Express API with automatic migrations
+docker compose up --build
+```
+The API is immediately live at `http://localhost:5000` with PostgreSQL and Redis automatically wired, healthy, and migrated.
+
+### 3. Local Development (Running API on Host Machine)
+```bash
+# Start PostgreSQL & Redis services only
+docker compose up -d postgres redis
+
+# Install dependencies reproducibly
+npm ci
+
+# Apply database migrations
+npx prisma migrate dev
+
+# Start development server with hot-reloading
+npm run dev
 ```
 
-### 3. Start PostgreSQL and Redis Infrastructure
+### 4. Code Quality & Automated Test Suite
 ```bash
-docker compose up -d
-docker compose ps
-```
+# Run ESLint static analysis
+npm run lint
 
-### 4. Run Database Migrations
-```bash
-npx prisma migrate dev --name init
-```
-
-### 5. Run Automated Tests
-```bash
-# Run all unit and integration tests
+# Run all 36 test suites (unit and integration)
 npm test
 
-# Run tests with coverage reporting
+# Run test suite with full coverage reporting
 npm run test:coverage
-```
-
-### 6. Start the API Server
-```bash
-# Development mode with hot-reloading
-npm run dev
-
-# Production mode
-npm start
 ```
 
 ---
