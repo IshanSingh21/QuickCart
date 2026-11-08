@@ -5,6 +5,8 @@ const prisma = require('./lib/prisma');
 const redisClient = require('./lib/redis');
 const notificationQueue = require('./jobs/notification.queue');
 const notificationWorker = require('./jobs/notification.worker');
+const orderExpiryQueue = require('./jobs/order-expiry.queue');
+const orderExpiryWorker = require('./jobs/order-expiry.worker');
 
 const PORT = config.port;
 
@@ -23,6 +25,8 @@ const gracefulShutdown = async (signal) => {
     try {
       await notificationWorker.close();
       await notificationQueue.close();
+      await orderExpiryWorker.close();
+      await orderExpiryQueue.close();
       await redisClient.disconnect();
       logger.info('Redis and Background queue connections closed cleanly.');
 

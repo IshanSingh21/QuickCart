@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { Prisma } = require('@prisma/client');
 const prisma = require('../../lib/prisma');
+const orderExpiryQueue = require('../../jobs/order-expiry.queue');
 const AppError = require('../../utils/app-error');
 
 class OrderService {
@@ -251,6 +252,14 @@ class OrderService {
 
         return order;
       });
+
+      // Asynchronously schedule automated 15-minute order expiration job (non-blocking post-commit)
+      orderExpiryQueue
+        .addOrderExpiryJob({
+          orderId: createdOrder.id,
+          orderNumber: createdOrder.orderNumber
+        })
+        .catch(() => {});
 
       return { order: this.formatOrder(createdOrder), isExisting: false };
     } catch (error) {
