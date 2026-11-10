@@ -20,3 +20,6 @@ export const Spinner: React.FC<SpinnerProps> = ({ className, size = 'md', ...pro
     </div>
   );
 };
+
+export const LoadingSpinner = Spinner;
+
