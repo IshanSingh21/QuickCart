@@ -3,6 +3,8 @@ import { Outlet } from 'react-router-dom';
 import { HealthBanner } from '../components/layout/HealthBanner';
 import { Header } from '../components/layout/Header';
 import { Footer } from '../components/layout/Footer';
+import { CartDrawer } from '../components/common/CartDrawer';
+import { SearchModal } from '../components/common/SearchModal';
 import { useAuthStore } from '../store/auth-store';
 
 export const RootLayout: React.FC = () => {
@@ -27,6 +29,12 @@ export const RootLayout: React.FC = () => {
 
       {/* Global Footer */}
       <Footer />
+
+      {/* Global Slide-Over Cart Drawer */}
+      <CartDrawer />
+
+      {/* Global Spotlight Search Modal (Cmd+K) */}
+      <SearchModal />
     </div>
   );
 };
