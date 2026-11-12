@@ -3,18 +3,25 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingBag, ShoppingCart, User as UserIcon, Menu, X, LogOut, Package, Search, Sparkles } from 'lucide-react';
 import { useAuthStore } from '../../store/auth-store';
 import { useUIStore } from '../../store/ui-store';
+import { performLogout } from '../../services/auth.service';
 import { Button } from '../ui/Button';
 
 export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const { user, isAuthenticated, isLoading } = useAuthStore();
   const { openCartDrawer, openSearchModal } = useUIStore();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await performLogout();
+      navigate('/login', { replace: true });
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const navCategories = [
@@ -89,7 +96,11 @@ export const Header: React.FC = () => {
             </button>
 
             {/* Authentication Entry */}
-            {isAuthenticated ? (
+            {isLoading ? (
+              <div className="hidden md:flex items-center gap-2 pl-3 border-l border-gray-200" aria-hidden="true">
+                <div className="h-8 w-20 rounded-lg bg-gray-100 animate-pulse" />
+              </div>
+            ) : isAuthenticated ? (
               <div className="hidden md:flex items-center gap-3 pl-3 border-l border-gray-200">
                 <Link
                   to="/orders"
@@ -99,14 +110,27 @@ export const Header: React.FC = () => {
                   <span>Orders</span>
                 </Link>
 
-                <div className="flex items-center gap-2 pl-1">
+                <Link
+                  to="/profile"
+                  className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-gray-50 transition-colors"
+                  title="Account & Session Security"
+                >
                   <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 font-bold text-xs flex items-center justify-center border border-primary-200/80 shadow-2xs">
                     {user?.firstName?.charAt(0) || 'U'}
                   </div>
                   <span className="text-xs font-semibold text-gray-800">{user?.firstName}</span>
-                </div>
+                </Link>
 
-                <Button variant="ghost" size="sm" onClick={handleLogout} title="Log Out" className="p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  isLoading={isLoggingOut}
+                  disabled={isLoggingOut}
+                  title="Log Out"
+                  aria-label="Log Out"
+                  className="p-2"
+                >
                   <LogOut className="w-4 h-4 text-gray-500 hover:text-rose-600" />
                 </Button>
               </div>
@@ -205,6 +229,13 @@ export const Header: React.FC = () => {
                 <UserIcon className="w-4 h-4 text-gray-400" />
                 <span>Signed in as <strong className="text-gray-900">{user?.email}</strong></span>
               </div>
+              <Link
+                to="/profile"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3 py-2 text-sm font-medium text-gray-800 rounded-lg hover:bg-gray-50"
+              >
+                Account &amp; Security
+              </Link>
               <Link
                 to="/orders"
                 onClick={() => setMobileMenuOpen(false)}

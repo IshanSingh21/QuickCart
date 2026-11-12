@@ -585,20 +585,26 @@ export const HomePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Seeded Demo Credentials Banner */}
-          <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-amber-900">
+          {/* Account & Authentication CTA Banner */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-slate-800">
             <div className="space-y-1">
-              <span className="font-bold block">Seeded Backend Evaluation Credentials</span>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-amber-800">
-                <span>Customer: <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">customer@quickcart.com</code> / <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">CustomerPass123!</code></span>
-                <span>Admin: <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">admin@quickcart.com</code> / <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">AdminPass123!</code></span>
-              </div>
+              <span className="font-bold block">Dual-Token Session Authentication</span>
+              <p className="text-[11px] text-slate-600">
+                Sign in or register an account to access protected routes, automatic silent token rotation, and live order tracking.
+              </p>
             </div>
-            <Link to="/login" className="shrink-0">
-              <Button variant="outline" size="sm" className="bg-white border-amber-300 text-amber-900 hover:bg-amber-100">
-                Sign In With Demo
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link to="/register">
+                <Button variant="outline" size="sm">
+                  Create Account
+                </Button>
+              </Link>
+              <Link to="/login">
+                <Button variant="primary" size="sm">
+                  Sign In
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </section>
