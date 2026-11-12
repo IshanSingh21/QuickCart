@@ -6,7 +6,12 @@ export class ApiError extends Error {
   public readonly code: string;
   public readonly details?: Array<{ field: string; message: string; rule?: string }>;
 
-  constructor(message: string, statusCode = 500, code = 'INTERNAL_ERROR', details?: Array<{ field: string; message: string; rule?: string }>) {
+  constructor(
+    message: string,
+    statusCode = 500,
+    code = 'INTERNAL_ERROR',
+    details?: Array<{ field: string; message: string; rule?: string }>
+  ) {
     super(message);
     this.name = 'ApiError';
     this.statusCode = statusCode;
@@ -27,6 +32,44 @@ export function isApiErrorResponse(data: unknown): data is ApiErrorResponse {
     'error' in data &&
     typeof (data as { error: unknown }).error === 'object'
   );
+}
+
+/**
+ * Extracts the standardized backend error code (e.g., TOKEN_EXPIRED, VALIDATION_ERROR) if present
+ */
+export function getApiErrorCode(error: unknown): string | null {
+  if (axios.isAxiosError(error)) {
+    const responseData = (error as AxiosError<ApiErrorResponse>).response?.data;
+    if (responseData && isApiErrorResponse(responseData)) {
+      return responseData.error.code;
+    }
+  }
+  return null;
+}
+
+/**
+ * Maps backend Zod validation error details (e.g. "body.email") to form field names (e.g. "email")
+ */
+export function getFieldValidationErrors(error: unknown): Record<string, string> {
+  const fieldErrors: Record<string, string> = {};
+
+  if (!axios.isAxiosError(error)) {
+    return fieldErrors;
+  }
+
+  const responseData = (error as AxiosError<ApiErrorResponse>).response?.data;
+  if (!responseData || !isApiErrorResponse(responseData) || !responseData.error.details) {
+    return fieldErrors;
+  }
+
+  for (const detail of responseData.error.details) {
+    const cleanField = detail.field.replace(/^(body|query|params)\./, '');
+    if (cleanField && !fieldErrors[cleanField]) {
+      fieldErrors[cleanField] = detail.message;
+    }
+  }
+
+  return fieldErrors;
 }
 
 /**
