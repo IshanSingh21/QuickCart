@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingBag, ShoppingCart, User as UserIcon, Menu, X, LogOut, Package, Search, Sparkles } from 'lucide-react';
 import { useAuthStore } from '../../store/auth-store';
 import { useUIStore } from '../../store/ui-store';
 import { performLogout } from '../../services/auth.service';
+import { useCategoriesQuery } from '../../features/categories/hooks/useCategories';
+import { useCartItemCount } from '../../features/cart/hooks/useCartActions';
 import { Button } from '../ui/Button';
 
 export const Header: React.FC = () => {
@@ -11,6 +13,8 @@ export const Header: React.FC = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const { user, isAuthenticated, isLoading } = useAuthStore();
   const { openCartDrawer, openSearchModal } = useUIStore();
+  const { data: categories = [] } = useCategoriesQuery(true);
+  const cartItemCount = useCartItemCount();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -24,13 +28,14 @@ export const Header: React.FC = () => {
     }
   };
 
-  const navCategories = [
-    { label: 'All Products', href: '/products' },
-    { label: 'Audio & Acoustics', href: '/products?category=audio' },
-    { label: 'Computers & Displays', href: '/products?category=electronics' },
-    { label: 'Workspace & Peripherals', href: '/products?category=accessories' },
-    { label: 'Trending', href: '/products?sortBy=price&order=desc' }
-  ];
+  const navCategories = useMemo(() => {
+    const dynamicCategories = categories.slice(0, 6).map((cat) => ({
+      label: cat.name,
+      href: `/products?category=${encodeURIComponent(cat.slug)}`
+    }));
+
+    return [{ label: 'All Products', href: '/products' }, ...dynamicCategories];
+  }, [categories]);
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-200/80">
@@ -90,9 +95,11 @@ export const Header: React.FC = () => {
               aria-label="View Shopping Cart"
             >
               <ShoppingCart className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-4 h-4 bg-primary-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-xs">
-                2
-              </span>
+              {cartItemCount > 0 && (
+                <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-primary-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-xs">
+                  {cartItemCount > 99 ? '99+' : cartItemCount}
+                </span>
+              )}
             </button>
 
             {/* Authentication Entry */}

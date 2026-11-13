@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '../../utils/cn';
-import { ShoppingBag, Star, Check } from 'lucide-react';
+import { ShoppingBag, Star, Check, Loader2 } from 'lucide-react';
 import { ImageWithFallback } from './ImageWithFallback';
 import { PriceDisplay } from './PriceDisplay';
 import { Badge } from './Badge';
@@ -10,9 +10,11 @@ export interface ProductCardProps {
   id: string;
   name: string;
   slug: string;
+  sku?: string;
   price: string | number;
   originalPrice?: string | number;
   imageUrl?: string;
+  imageAlt?: string;
   categoryName?: string;
   categorySlug?: string;
   stock?: number;
@@ -21,6 +23,7 @@ export interface ProductCardProps {
   badgeText?: string;
   badgeVariant?: 'new' | 'sale' | 'primary' | 'default';
   isAddedToCart?: boolean;
+  isAddingToCart?: boolean;
   onAddToCart?: (id: string, e: React.MouseEvent) => void;
   className?: string;
 }
@@ -29,25 +32,29 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   id,
   name,
   slug,
+  sku,
   price,
   originalPrice,
   imageUrl,
+  imageAlt,
   categoryName,
-  stock = 10,
-  rating = 4.8,
-  reviewCount = 24,
+  stock,
+  rating,
+  reviewCount,
   badgeText,
   badgeVariant = 'new',
   isAddedToCart = false,
+  isAddingToCart = false,
   onAddToCart,
   className
 }) => {
-  const isOutOfStock = stock <= 0;
+  const hasKnownStock = typeof stock === 'number';
+  const isOutOfStock = hasKnownStock && stock <= 0;
 
   const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!isOutOfStock && onAddToCart) {
+    if (!isOutOfStock && !isAddingToCart && onAddToCart) {
       onAddToCart(id, e);
     }
   };
@@ -64,23 +71,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       <Link to={`/products/${slug}`} className="relative block overflow-hidden rounded-xl bg-gray-50">
         <ImageWithFallback
           src={imageUrl}
-          alt={name}
+          alt={imageAlt || name}
           aspectRatio="portrait"
           className="transition-transform duration-500 ease-out group-hover:scale-105"
         />
 
-        {/* Floating Badges */}
+        {/* Floating Badges (only real data) */}
         <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5 z-10">
           {badgeText && (
             <Badge variant={badgeVariant} size="sm">
               {badgeText}
             </Badge>
           )}
-          {isOutOfStock ? (
+          {hasKnownStock && isOutOfStock ? (
             <Badge variant="out-of-stock" size="sm">
               Sold Out
             </Badge>
-          ) : stock <= 5 ? (
+          ) : hasKnownStock && stock > 0 && stock <= 5 ? (
             <Badge variant="warning" size="sm">
               Only {stock} left
             </Badge>
@@ -90,21 +97,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Product Details */}
       <div className="flex flex-1 flex-col pt-3.5 pb-1">
-        {/* Category & Rating */}
-        <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-          {categoryName ? (
-            <span className="font-medium text-primary-600 uppercase tracking-wider text-[10px]">
-              {categoryName}
-            </span>
-          ) : (
-            <span className="text-gray-400 text-[10px]">TECH</span>
-          )}
+        {/* Category & Optional Rating / SKU */}
+        <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5 gap-2">
+          <span className="font-medium text-primary-600 uppercase tracking-wider text-[10px] truncate">
+            {categoryName || 'Catalog'}
+          </span>
 
-          <div className="flex items-center gap-1 text-amber-500">
-            <Star className="w-3.5 h-3.5 fill-current" />
-            <span className="font-medium text-gray-700 text-xs">{rating.toFixed(1)}</span>
-            <span className="text-gray-400 text-[10px]">({reviewCount})</span>
-          </div>
+          {typeof rating === 'number' ? (
+            <div className="flex items-center gap-1 text-amber-500 shrink-0">
+              <Star className="w-3.5 h-3.5 fill-current" />
+              <span className="font-medium text-gray-700 text-xs">{rating.toFixed(1)}</span>
+              {typeof reviewCount === 'number' && (
+                <span className="text-gray-400 text-[10px]">({reviewCount})</span>
+              )}
+            </div>
+          ) : sku ? (
+            <span className="font-mono text-[10px] text-gray-400 truncate">{sku}</span>
+          ) : null}
         </div>
 
         {/* Product Title */}
@@ -114,6 +123,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </h3>
         </Link>
 
+        {/* Stock text indicator if real stock provided */}
+        {hasKnownStock && (
+          <p className="mt-1.5 text-[11px] font-medium text-gray-500">
+            {isOutOfStock
+              ? 'Currently out of stock'
+              : stock <= 5
+              ? `Low stock (${stock} remaining)`
+              : `${stock} in stock`}
+          </p>
+        )}
+
         {/* Price & Add to Cart Button */}
         <div className="mt-auto pt-3.5 flex items-center justify-between border-t border-gray-100/80">
           <PriceDisplay price={price} originalPrice={originalPrice} size="md" />
@@ -121,7 +141,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <button
             type="button"
             onClick={handleAdd}
-            disabled={isOutOfStock}
+            disabled={isOutOfStock || isAddingToCart}
             className={cn(
               'relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
               isAddedToCart
@@ -130,10 +150,24 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'bg-primary-50 text-primary-700 hover:bg-primary-600 hover:text-white active:scale-95 shadow-2xs'
             )}
-            title={isOutOfStock ? 'Out of stock' : isAddedToCart ? 'Added to cart' : 'Add to cart'}
+            title={
+              isOutOfStock
+                ? 'Out of stock'
+                : isAddingToCart
+                ? 'Adding to cart...'
+                : isAddedToCart
+                ? 'Added to cart'
+                : 'Add to cart'
+            }
             aria-label={`Add ${name} to shopping cart`}
           >
-            {isAddedToCart ? <Check className="w-4 h-4 stroke-[2.5]" /> : <ShoppingBag className="w-4 h-4" />}
+            {isAddingToCart ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isAddedToCart ? (
+              <Check className="w-4 h-4 stroke-[2.5]" />
+            ) : (
+              <ShoppingBag className="w-4 h-4" />
+            )}
           </button>
         </div>
       </div>

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../../store/ui-store';
-import { Search, X, ArrowRight, Package } from 'lucide-react';
-import { MOCK_PRODUCTS } from '../../mocks/mock-products';
+import { Search, X, ArrowRight, Package, Loader2, AlertCircle } from 'lucide-react';
 import { ImageWithFallback } from '../ui/ImageWithFallback';
 import { PriceDisplay } from '../ui/PriceDisplay';
+import { useProductsQuery } from '../../features/products/hooks/useProducts';
+import { formatErrorMessage } from '../../utils/error-handler';
 
 export const SearchModal: React.FC = () => {
   const { isSearchModalOpen, closeSearchModal } = useUIStore();
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedTerm, setDebouncedTerm] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -26,34 +28,49 @@ export const SearchModal: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSearchModalOpen, closeSearchModal]);
 
+  useEffect(() => {
+    const trimmed = searchTerm.trim();
+    if (!trimmed) {
+      setDebouncedTerm('');
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDebouncedTerm(trimmed);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
+
+  const { data, isLoading, isError, error } = useProductsQuery(
+    { search: debouncedTerm, limit: 5, page: 1 },
+    { enabled: isSearchModalOpen && debouncedTerm.length > 0 }
+  );
+
   if (!isSearchModalOpen) return null;
 
-  const filteredProducts = searchTerm.trim()
-    ? MOCK_PRODUCTS.filter(
-        (p) =>
-          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.categoryName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.description.toLowerCase().includes(searchTerm.toLowerCase())
-      ).slice(0, 5)
-    : [];
+  const filteredProducts = data?.products ?? [];
 
   const handleSelectProduct = (slug: string) => {
     closeSearchModal();
     setSearchTerm('');
+    setDebouncedTerm('');
     navigate(`/products/${slug}`);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchTerm.trim()) {
+      const target = searchTerm.trim();
       closeSearchModal();
-      navigate(`/products?search=${encodeURIComponent(searchTerm.trim())}`);
       setSearchTerm('');
+      setDebouncedTerm('');
+      navigate(`/products?search=${encodeURIComponent(target)}`);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 md:p-20" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 md:p-20" role="dialog" aria-modal="true" aria-label="Search products">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-gray-900/60 backdrop-blur-xs transition-opacity animate-in fade-in"
@@ -69,13 +86,17 @@ export const SearchModal: React.FC = () => {
             autoFocus
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search audio, laptops, peripherals, SKUs..."
+            placeholder="Search products by name or description..."
             className="w-full bg-transparent px-3 py-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none"
           />
           {searchTerm && (
             <button
               type="button"
-              onClick={() => setSearchTerm('')}
+              onClick={() => {
+                setSearchTerm('');
+                setDebouncedTerm('');
+              }}
+              aria-label="Clear search query"
               className="p-1 rounded-md text-gray-400 hover:text-gray-600"
             >
               <X className="w-4 h-4" />
@@ -86,28 +107,45 @@ export const SearchModal: React.FC = () => {
           </kbd>
         </form>
 
-        {/* Results / Suggestions Container */}
+        {/* Results Container */}
         <div className="max-h-96 overflow-y-auto p-2">
           {searchTerm.trim() ? (
-            filteredProducts.length > 0 ? (
+            isLoading || debouncedTerm !== searchTerm.trim() ? (
+              <div className="p-8 flex items-center justify-center gap-2 text-xs text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin text-primary-600" />
+                <span>Searching catalogue...</span>
+              </div>
+            ) : isError ? (
+              <div className="p-6 text-center text-xs text-rose-700 space-y-1">
+                <AlertCircle className="w-6 h-6 text-rose-500 mx-auto" />
+                <p>{formatErrorMessage(error)}</p>
+              </div>
+            ) : filteredProducts.length > 0 ? (
               <div className="space-y-1">
                 <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                  Products ({filteredProducts.length})
+                  Products ({data?.meta.total ?? filteredProducts.length})
                 </div>
                 {filteredProducts.map((p) => (
                   <button
                     key={p.id}
+                    type="button"
                     onClick={() => handleSelectProduct(p.slug)}
                     className="w-full flex items-center gap-3.5 p-2.5 rounded-xl hover:bg-gray-50 text-left transition-colors group"
                   >
                     <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
-                      <ImageWithFallback src={p.imageUrl} alt={p.name} aspectRatio="square" />
+                      <ImageWithFallback
+                        src={p.images[0]?.url}
+                        alt={p.images[0]?.altText || p.name}
+                        aspectRatio="square"
+                      />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-semibold uppercase text-primary-600">
-                          {p.categoryName}
-                        </span>
+                        {p.category && (
+                          <span className="text-[10px] font-semibold uppercase text-primary-600">
+                            {p.category.name}
+                          </span>
+                        )}
                         <span className="text-gray-300">•</span>
                         <span className="text-[10px] text-gray-400 font-mono">{p.sku}</span>
                       </div>
@@ -121,6 +159,7 @@ export const SearchModal: React.FC = () => {
                 ))}
                 <div className="p-2 border-t border-gray-100 mt-2">
                   <button
+                    type="button"
                     onClick={handleSearchSubmit}
                     className="w-full text-center py-2 text-xs font-semibold text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
                   >
@@ -132,33 +171,21 @@ export const SearchModal: React.FC = () => {
               <div className="p-8 text-center text-gray-500">
                 <Package className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                 <p className="text-sm font-medium text-gray-900">No products match &quot;{searchTerm}&quot;</p>
-                <p className="text-xs text-gray-400 mt-1">Try checking for spelling or search general keywords like &quot;Audio&quot;</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Try another product name or browse the full catalog.
+                </p>
               </div>
             )
           ) : (
-            <div className="p-4 space-y-4">
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 block mb-2">
-                  Popular Searches
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {['Sony WH-1000XM5', 'MacBook Pro M3', 'Logitech MX Master', 'Noise Cancelling', 'Anker 140W'].map(
-                    (tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => setSearchTerm(tag)}
-                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-200 transition-colors"
-                      >
-                        {tag}
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-500">
+                Start typing to search across product titles and descriptions in real time.
+              </p>
               <div className="pt-2 border-t border-gray-100 text-[11px] text-gray-400 flex items-center justify-between">
-                <span>Tip: Press <kbd className="font-mono bg-gray-100 px-1 rounded">Cmd + K</kbd> anywhere to search</span>
-                <span>PostgreSQL Full-Text Search</span>
+                <span>
+                  Tip: Press <kbd className="font-mono bg-gray-100 px-1 rounded">Cmd + K</kbd> anywhere to search
+                </span>
+                <span>Press Enter for full results</span>
               </div>
             </div>
           )}
