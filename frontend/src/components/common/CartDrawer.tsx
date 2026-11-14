@@ -1,64 +1,30 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../../store/ui-store';
 import { useAuthStore } from '../../store/auth-store';
-import { useGuestCartStore } from '../../store/guest-cart-store';
-import { cartKeys, useServerCartQuery } from '../../features/cart/hooks/useCartActions';
-import { cartService } from '../../services/cart.service';
-import { X, ShoppingBag, Trash2, ArrowRight, ShieldCheck } from 'lucide-react';
+import {
+  useCartData,
+  useUpdateCartQuantityMutation,
+  useRemoveCartItemMutation,
+  UnifiedCartItem
+} from '../../features/cart/hooks/useCartActions';
+import { X, ShoppingBag, Trash2, ArrowRight, ShieldCheck, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { PriceDisplay } from '../ui/PriceDisplay';
 import { QuantitySelector } from '../ui/QuantitySelector';
 import { ImageWithFallback } from '../ui/ImageWithFallback';
-
-interface DrawerDisplayItem {
-  key: string;
-  idForUpdate: string;
-  name: string;
-  slug: string;
-  price: string;
-  quantity: number;
-  maxStock: number;
-  imageUrl: string | null;
-}
+import { formatErrorMessage } from '../../utils/error-handler';
 
 export const CartDrawer: React.FC = () => {
   const { isCartDrawerOpen, closeCartDrawer } = useUIStore();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const queryClient = useQueryClient();
 
-  const { data: serverCart } = useServerCartQuery();
-  const guestItems = useGuestCartStore((state) => state.items);
-  const updateGuestQty = useGuestCartStore((state) => state.updateQuantity);
-  const removeGuestItem = useGuestCartStore((state) => state.removeItem);
+  const { items, subtotal, itemCount, hasUnavailableItems } = useCartData();
+  const updateMutation = useUpdateCartQuantityMutation();
+  const removeMutation = useRemoveCartItemMutation();
 
-  const items: DrawerDisplayItem[] = isAuthenticated
-    ? (serverCart?.items ?? []).map((item) => ({
-        key: item.itemId,
-        idForUpdate: item.itemId,
-        name: item.name,
-        slug: item.slug,
-        price: item.currentPrice,
-        quantity: item.quantity,
-        maxStock: Math.max(1, item.availableStock),
-        imageUrl: item.image
-      }))
-    : guestItems.map((item) => ({
-        key: item.productId,
-        idForUpdate: item.productId,
-        name: item.name,
-        slug: item.slug,
-        price: item.currentPrice,
-        quantity: item.quantity,
-        maxStock: Math.max(1, item.availableStock),
-        imageUrl: item.image
-      }));
-
-  const totalCount = items.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotalNumber = isAuthenticated && serverCart
-    ? parseFloat(serverCart.subtotal)
-    : items.reduce((acc, item) => acc + parseFloat(item.price) * item.quantity, 0);
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -80,41 +46,59 @@ export const CartDrawer: React.FC = () => {
     };
   }, [isCartDrawerOpen, closeCartDrawer]);
 
-  const handleQuantityChange = async (id: string, qty: number) => {
-    if (isAuthenticated) {
-      try {
-        const updated =
-          qty <= 0
-            ? await cartService.removeItem(id)
-            : await cartService.updateItemQuantity(id, qty);
-        queryClient.setQueryData(cartKeys.detail(), updated);
-      } catch {
-        await queryClient.invalidateQueries({ queryKey: cartKeys.detail() });
-      }
-      return;
+  // Clear transient error when drawer opens/closes
+  useEffect(() => {
+    if (!isCartDrawerOpen) {
+      setErrorMessage(null);
+      setUpdatingItemId(null);
     }
+  }, [isCartDrawerOpen]);
 
-    updateGuestQty(id, qty);
+  const handleQuantityChange = async (item: UnifiedCartItem, newQuantity: number) => {
+    if (updatingItemId) return;
+    setErrorMessage(null);
+    setUpdatingItemId(item.id);
+
+    try {
+      await updateMutation.mutateAsync({
+        itemId: item.itemId,
+        productId: item.productId,
+        quantity: newQuantity
+      });
+    } catch (err) {
+      setErrorMessage(formatErrorMessage(err));
+    } finally {
+      setUpdatingItemId(null);
+    }
   };
 
-  const handleRemove = async (id: string) => {
-    if (isAuthenticated) {
-      try {
-        const updated = await cartService.removeItem(id);
-        queryClient.setQueryData(cartKeys.detail(), updated);
-      } catch {
-        await queryClient.invalidateQueries({ queryKey: cartKeys.detail() });
-      }
-      return;
-    }
+  const handleRemove = async (item: UnifiedCartItem) => {
+    if (updatingItemId) return;
+    setErrorMessage(null);
+    setUpdatingItemId(item.id);
 
-    removeGuestItem(id);
+    try {
+      await removeMutation.mutateAsync({
+        itemId: item.itemId,
+        productId: item.productId
+      });
+    } catch (err) {
+      setErrorMessage(formatErrorMessage(err));
+    } finally {
+      setUpdatingItemId(null);
+    }
   };
 
   if (!isCartDrawerOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true" aria-label="Shopping cart">
+    <div
+      className="fixed inset-0 z-50 overflow-hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Shopping cart"
+    >
+      {/* Backdrop */}
       <div
         className="fixed inset-0 bg-gray-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-300"
         onClick={closeCartDrawer}
@@ -128,7 +112,7 @@ export const CartDrawer: React.FC = () => {
               <ShoppingBag className="w-5 h-5 text-primary-600" />
               <h2 className="text-lg font-bold text-gray-900">Your Cart</h2>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary-50 text-primary-700">
-                {totalCount} {totalCount === 1 ? 'item' : 'items'}
+                {itemCount} {itemCount === 1 ? 'item' : 'items'}
               </span>
             </div>
             <button
@@ -141,13 +125,46 @@ export const CartDrawer: React.FC = () => {
             </button>
           </div>
 
+          {/* Guest notification notice */}
           {!isAuthenticated && items.length > 0 && (
-            <div className="bg-amber-50 px-6 py-2.5 border-b border-amber-100 text-[11px] text-amber-900">
-              Shopping as guest.{' '}
-              <Link to="/login" onClick={closeCartDrawer} className="font-semibold underline">
-                Sign in
-              </Link>{' '}
-              to sync with your account and check out.
+            <div className="bg-amber-50 px-6 py-2.5 border-b border-amber-100 text-[11px] text-amber-900 flex items-center justify-between">
+              <span>Shopping as guest.</span>
+              <Link
+                to="/login?from=/cart"
+                onClick={closeCartDrawer}
+                className="font-semibold underline hover:text-amber-950"
+              >
+                Sign in to sync
+              </Link>
+            </div>
+          )}
+
+          {/* Error / Conflict Alert */}
+          {errorMessage && (
+            <div
+              className="mx-6 mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2 animate-in fade-in"
+              role="alert"
+            >
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1 font-medium">{errorMessage}</div>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="text-rose-500 hover:text-rose-700"
+                aria-label="Dismiss alert"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Unavailable Items Alert */}
+          {hasUnavailableItems && (
+            <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="font-medium">
+                One or more items exceed current stock or are unavailable.
+              </div>
             </div>
           )}
 
@@ -171,49 +188,70 @@ export const CartDrawer: React.FC = () => {
                 </div>
               </div>
             ) : (
-              items.map((item) => (
-                <div key={item.key} className="py-4 first:pt-0 last:pb-0 flex gap-4">
-                  <div className="w-18 h-18 rounded-xl bg-gray-50 shrink-0 overflow-hidden border border-gray-100">
-                    <ImageWithFallback src={item.imageUrl ?? undefined} alt={item.name} aspectRatio="square" />
-                  </div>
+              items.map((item) => {
+                const isItemUpdating = updatingItemId === item.id;
+                const isOutOfStock = !item.isAvailable || item.availableStock < item.quantity;
 
-                  <div className="flex-1 min-w-0 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <Link
-                          to={`/products/${item.slug}`}
-                          onClick={closeCartDrawer}
-                          className="text-sm font-semibold text-gray-900 hover:text-primary-600 line-clamp-1"
-                        >
-                          {item.name}
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => void handleRemove(item.idForUpdate)}
-                          className="text-gray-400 hover:text-rose-600 p-1 rounded transition-colors"
-                          aria-label={`Remove ${item.name} from cart`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <PriceDisplay price={item.price} size="sm" className="mt-0.5" />
-                    </div>
-
-                    <div className="flex items-center justify-between mt-2">
-                      <QuantitySelector
-                        size="sm"
-                        value={item.quantity}
-                        min={1}
-                        max={item.maxStock}
-                        onChange={(qty) => void handleQuantityChange(item.idForUpdate, qty)}
+                return (
+                  <div
+                    key={item.id}
+                    className={`py-4 first:pt-0 last:pb-0 flex gap-4 transition-opacity ${
+                      isItemUpdating ? 'opacity-50 pointer-events-none' : ''
+                    }`}
+                  >
+                    <div className="w-18 h-18 rounded-xl bg-gray-50 shrink-0 overflow-hidden border border-gray-100 relative">
+                      <ImageWithFallback
+                        src={item.image ?? undefined}
+                        alt={item.name}
+                        aspectRatio="square"
                       />
-                      <span className="text-xs font-semibold text-gray-900 tabular-nums">
-                        ${(parseFloat(item.price) * item.quantity).toFixed(2)}
-                      </span>
+                    </div>
+
+                    <div className="flex-1 min-w-0 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <Link
+                            to={`/products/${item.slug}`}
+                            onClick={closeCartDrawer}
+                            className="text-sm font-semibold text-gray-900 hover:text-primary-600 line-clamp-1"
+                          >
+                            {item.name}
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => void handleRemove(item)}
+                            disabled={isItemUpdating}
+                            className="text-gray-400 hover:text-rose-600 p-1 rounded transition-colors disabled:opacity-50"
+                            aria-label={`Remove ${item.name} from cart`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <PriceDisplay price={item.currentPrice} size="sm" className="mt-0.5" />
+                        {isOutOfStock && (
+                          <div className="mt-1 text-[11px] font-semibold text-rose-600">
+                            Only {item.availableStock} available
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-2">
+                        <QuantitySelector
+                          size="sm"
+                          value={item.quantity}
+                          min={1}
+                          max={Math.max(1, item.availableStock)}
+                          disabled={isItemUpdating}
+                          onChange={(qty) => void handleQuantityChange(item, qty)}
+                        />
+                        <span className="text-xs font-semibold text-gray-900 tabular-nums">
+                          ${parseFloat(item.lineTotal).toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -222,13 +260,13 @@ export const CartDrawer: React.FC = () => {
             <div className="p-6 border-t border-gray-100 bg-gray-50/80 space-y-4">
               <div className="flex justify-between text-sm font-bold text-gray-900">
                 <span>Subtotal</span>
-                <span className="tabular-nums">${subtotalNumber.toFixed(2)}</span>
+                <span className="tabular-nums">${parseFloat(subtotal).toFixed(2)}</span>
               </div>
 
               <div className="space-y-2">
                 <Link to="/cart" onClick={closeCartDrawer} className="block">
                   <Button className="w-full" size="lg" rightIcon={<ArrowRight className="w-4 h-4" />}>
-                    View Cart
+                    View Cart &amp; Checkout
                   </Button>
                 </Link>
               </div>

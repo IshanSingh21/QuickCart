@@ -8,6 +8,7 @@ import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { OrdersPage } from '../pages/OrdersPage';
+import { CheckoutPage } from '../pages/CheckoutPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProtectedRoute } from '../features/auth/components/ProtectedRoute';
 import { GuestRoute } from '../features/auth/components/GuestRoute';
@@ -32,7 +33,8 @@ export const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           { path: 'profile', element: <ProfilePage /> },
-          { path: 'orders', element: <OrdersPage /> }
+          { path: 'orders', element: <OrdersPage /> },
+          { path: 'checkout', element: <CheckoutPage /> }
         ]
       },
       { path: '404', element: <NotFoundPage /> },
