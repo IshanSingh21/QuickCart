@@ -8,11 +8,15 @@ import { CartDrawer } from '../components/common/CartDrawer';
 import { SearchModal } from '../components/common/SearchModal';
 import { restoreAuthSession } from '../services/auth.service';
 import { useAuthStore } from '../store/auth-store';
+import { useAutoMergeGuestCart } from '../features/cart/hooks/useCartActions';
 
 export const RootLayout: React.FC = () => {
   const location = useLocation();
   const sessionExpired = useAuthStore((state) => state.sessionExpired);
   const dismissSessionExpired = useAuthStore((state) => state.dismissSessionExpired);
+
+  // Auto-sync guest cart items when user authenticates
+  useAutoMergeGuestCart();
 
   useEffect(() => {
     void restoreAuthSession();

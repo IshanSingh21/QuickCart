@@ -40,5 +40,13 @@ export const cartService = {
       `/cart/items/${encodeURIComponent(itemId)}`
     );
     return response.data.data;
+  },
+
+  /**
+   * Clear all items from authenticated caller's cart via DELETE /api/v1/cart
+   */
+  async clearCart(): Promise<Cart> {
+    const response = await apiClient.delete<ApiResponse<Cart>>('/cart');
+    return response.data.data;
   }
 };
