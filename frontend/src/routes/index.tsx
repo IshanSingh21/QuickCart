@@ -9,6 +9,8 @@ import { RegisterPage } from '../pages/RegisterPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { OrdersPage } from '../pages/OrdersPage';
 import { CheckoutPage } from '../pages/CheckoutPage';
+import { OrderConfirmationPage } from '../pages/OrderConfirmationPage';
+import { PaymentStatusPage } from '../pages/PaymentStatusPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProtectedRoute } from '../features/auth/components/ProtectedRoute';
 import { GuestRoute } from '../features/auth/components/GuestRoute';
@@ -34,7 +36,10 @@ export const router = createBrowserRouter([
         children: [
           { path: 'profile', element: <ProfilePage /> },
           { path: 'orders', element: <OrdersPage /> },
-          { path: 'checkout', element: <CheckoutPage /> }
+          { path: 'orders/:orderId', element: <OrderConfirmationPage /> },
+          { path: 'checkout', element: <CheckoutPage /> },
+          { path: 'checkout/confirmation/:orderId', element: <OrderConfirmationPage /> },
+          { path: 'checkout/status/:orderId', element: <PaymentStatusPage /> }
         ]
       },
       { path: '404', element: <NotFoundPage /> },
