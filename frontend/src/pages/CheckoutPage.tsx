@@ -41,12 +41,13 @@ import { Badge } from '../components/ui/Badge';
 import { PriceDisplay } from '../components/ui/PriceDisplay';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ImageWithFallback } from '../components/ui/ImageWithFallback';
+import { LoadingSpinner } from '../components/ui/Spinner';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
 
-  const { items, subtotal, itemCount } = useCartData();
+  const { items, subtotal, itemCount, isLoading } = useCartData();
   const checkoutMutation = useCheckoutMutation();
   const paymentMutation = useProcessPaymentMutation();
 
@@ -153,6 +154,16 @@ export const CheckoutPage: React.FC = () => {
       setCheckoutError(formatErrorMessage(checkoutErr));
     }
   };
+
+  // If cart data is currently loading from server
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 flex flex-col items-center justify-center">
+        <LoadingSpinner size="lg" />
+        <p className="mt-3 text-xs text-gray-500 font-medium">Loading checkout details...</p>
+      </div>
+    );
+  }
 
   // If cart is empty and not submitting
   if (items.length === 0 && !isSubmitting) {
