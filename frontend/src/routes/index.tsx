@@ -13,6 +13,7 @@ import { CheckoutPage } from '../pages/CheckoutPage';
 import { OrderConfirmationPage } from '../pages/OrderConfirmationPage';
 import { PaymentStatusPage } from '../pages/PaymentStatusPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
+import { RouteErrorBoundary } from '../components/common/RouteErrorBoundary';
 import { ProtectedRoute } from '../features/auth/components/ProtectedRoute';
 import { GuestRoute } from '../features/auth/components/GuestRoute';
 
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <RootLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, element: <HomePage /> },
       { path: 'products', element: <ProductsPage /> },
