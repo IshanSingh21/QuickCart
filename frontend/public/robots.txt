@@ -1,0 +1,10 @@
+# QuickCart Production Robots Directive
+User-agent: *
+Allow: /
+Disallow: /profile
+Disallow: /orders
+Disallow: /checkout
+Disallow: /login
+Disallow: /register
+
+Sitemap: https://quickcart.com/sitemap.xml

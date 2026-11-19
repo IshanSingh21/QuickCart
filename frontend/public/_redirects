@@ -1,0 +1,3 @@
+# Single Page Application SPA Routing Fallback
+# Serves index.html for all client-side routes with HTTP 200 status
+/*    /index.html   200
