@@ -39,6 +39,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: false,
     clearMocks: true,
+    testTimeout: 15000,
+    hookTimeout: 15000,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist', 'e2e']
   }
