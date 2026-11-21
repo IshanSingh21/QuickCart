@@ -500,7 +500,7 @@ For production cloud deployment, QuickCart is designed to run seamlessly on AWS:
 
 ---
 
-## 🎓 Senior SDE Interview Questions & Model Answers
+## 🎓 Questions & Model Answers
 
 ### Q1: How do you prevent inventory overselling during high-concurrency flash sales?
 > **Answer**: We reject the naive read-then-write approach (`findUnique` followed by `update`) because it introduces a Time-Of-Check to Time-Of-Use (TOCTOU) race condition. Instead, QuickCart executes an atomic SQL conditional decrement:
